@@ -1,0 +1,34 @@
+# Environment
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# Batch job outputs (large, regenerable)
+out/
+
+# HuggingFace dataset directories (large, regenerable)
+mmlu_pro_downsampled_*/
+mmlu_pro_final_*/
+
+# JSONL intermediates (regenerable)
+*.jsonl
+
+# Scratch directories and files
+prova/
+prova-2/
+data/
+logs/
+old_scripts/
+notes/
+*.txt
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
