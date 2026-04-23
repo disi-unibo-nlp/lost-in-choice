@@ -34,22 +34,14 @@ Each question is then augmented to 1000 options across **30 variants** (5 window
 ## Repository Structure
 
 ```
-preprocess/                    ← dataset construction pipeline
-  categorize_mmlu.py           ← submit categorization batch job (Together AI)
-  retrieve_categorize_mmlu.py  ← retrieve categorization results
-  combine_predictions.py       ← majority-vote labels across judges
-  sample_final_dataset.py      ← build the 1000-question benchmark
-  augment_final_dataset_v2.py  ← expand to N options (windows × modes × seeds)
-  analysis/                    ← sanity checks, stats, exploration
-src/                           ← experiment code
-  run_inference.py             ← submit inference batch job (Together AI)
-  retrieve_inference.py        ← retrieve results + compute accuracy metrics
+preprocess/          ← dataset construction pipeline (see preprocess/README.md)
+  analysis/          ← sanity checks, stats, exploration
+src/                 ← experiment code (inference + evaluation)
   utils/
-    summarize_results.py
-scripts/                       ← shell helpers
-notes/                         ← research notes and design documents
-data/                          ← datasets (gitignored)
-out/                           ← batch job outputs (gitignored)
+scripts/             ← shell helpers
+notes/               ← research notes and design documents
+data/                ← datasets (gitignored)
+out/                 ← batch job outputs (gitignored)
 ```
 
 ## Setup
@@ -63,41 +55,33 @@ Create a `.env` file:
 TOGETHER_API_KEY=...
 ```
 
-## Running the Pipeline
+## Pipeline
+
+The full pipeline runs in two phases. See [`preprocess/README.md`](preprocess/README.md) for detailed instructions, all script arguments, and intermediate output formats.
+
+### Phase 1 — Build the benchmark (`preprocess/`)
+
+| Step | Script | Output |
+|------|--------|--------|
+| 1 | `sample_mmlu.py` | `mmlu_pro_downsampled_2858/` |
+| 2 | `categorize_mmlu.py` | batch job per judge model |
+| 3 | `retrieve_categorize_mmlu.py` | `mmlu_pro_downsampled_2858_categorized/<model>/` |
+| 4 | `combine_predictions.py` | `mmlu_pro_downsampled_2858_categorized_combined/` |
+| 5 | `sample_final_dataset.py` | `data/bench/mmlu-pro-augmented-10/` |
+| 6 | `augment_final_dataset_v2.py` | `data/bench/mmlu-pro-augmented-1000/` (30 variants) |
+
+Steps 2–3 are repeated for each judge model used in categorization.
+
+### Phase 2 — Run inference (`src/`)
 
 ```bash
-# 1. Categorize questions (option_dependent vs option_independent)
-python preprocess/categorize_mmlu.py \
-  --dataset-dir mmlu_pro_downsampled_2858 \
-  --model-name "openai/gpt-oss-120b" \
-  --output-dir out/completions
-
-# 2. Retrieve categorization results
-python preprocess/retrieve_categorize_mmlu.py \
-  --dataset-dir mmlu_pro_downsampled_2858 \
-  --output-dir out/completions/gpt-oss-120b/categorization/<timestamp> \
-  --job-id <JOB_ID>
-
-# 3. Combine multi-judge predictions
-python preprocess/combine_predictions.py
-
-# 4. Build the 1000-question benchmark
-python preprocess/sample_final_dataset.py \
-  --combined-path mmlu_pro_downsampled_2858_categorized_combined \
-  --output-path data/bench/mmlu-pro-augmented-10
-
-# 5. Augment to 1000 options (30 variants)
-python preprocess/augment_final_dataset_v2.py \
-  --dataset-path data/bench/mmlu-pro-augmented-10 \
-  --source-dataset-path mmlu_pro_downsampled_2858
-
-# 6. Run inference
+# Submit a batch inference job for one configuration
 python src/run_inference.py \
   --window 0.5 --mode sparse \
   --model-name "openai/gpt-oss-120b" \
   --seed 42
 
-# 7. Retrieve results and compute accuracy
+# Retrieve results and compute accuracy
 python src/retrieve_inference.py \
   --output-dir out/completions/gpt-oss-120b/<dataset_tag>/<timestamp>
 ```
