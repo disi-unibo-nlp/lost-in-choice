@@ -45,24 +45,30 @@ VALID_WINDOWS = [0.0, 0.25, 0.5, 0.75, 1.0]
 VALID_MODES = ["block", "sparse"]
 
 # JSON schema for the structured answer — a single integer index
-def answer_json_schema(n_options: int) -> dict:
+def answer_json_schema(n_options: int, is_instruct_model: bool = False) -> dict:
+    properties: dict = {
+        "answer_index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": n_options - 1,
+            "description": f"The index (0–{n_options - 1}) of the correct option.",
+        }
+    }
+    required = ["answer_index"]
+    if is_instruct_model:
+        properties["reasoning"] = {
+            "type": "string",
+            "description": "Step-by-step reasoning before selecting the answer.",
+        }
+        required = ["reasoning", "answer_index"]
     return {
         "type": "json_schema",
         "json_schema": {
             "name": "mcq_answer",
             "schema": {
                 "type": "object",
-                "properties": {
-                    "answer_index": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": n_options - 1,
-                        "description": (
-                            f"The index (0–{n_options - 1}) of the correct option."
-                        ),
-                    }
-                },
-                "required": ["answer_index"],
+                "properties": properties,
+                "required": required,
                 "additionalProperties": False,
             },
             "strict": True,
@@ -81,7 +87,7 @@ def answer_json_schema(n_options: int) -> dict:
 # Prompt formatting
 # ---------------------------------------------------------------------------
 
-def format_prompt(item: dict, n_options: int, options_key: str = "new_options") -> Tuple[str, str]:
+def format_prompt(item: dict, n_options: int, options_key: str = "new_options", is_instruct_model: bool = False) -> Tuple[str, str]:
     """Return (custom_id, user_message_text) for one dataset row."""
     qid = str(item["question_id"])
     question = item["question"]
@@ -91,11 +97,18 @@ def format_prompt(item: dict, n_options: int, options_key: str = "new_options") 
     for i, opt in enumerate(options):
         lines.append(f"({i}) {opt}")
 
-    lines += [
-        "",
-        f"Select the single correct option. "
-        f"Respond with JSON: {{\"answer_index\": <integer from 0 to {n_options - 1}>}}",
-    ]
+    if not is_instruct_model:
+        lines += [
+            "",
+            f"Select the single correct option. "
+            f"Respond with JSON: {{\"answer_index\": <integer from 0 to {n_options - 1}>}}",
+        ]
+    else:
+        lines += [
+            "",
+            f"Select the single correct option. "
+            f"Respond with JSON: {{\"reasoning\": <step by step reasoning>, \"answer_index\": <integer from 0 to {n_options - 1}>}}",
+        ]
 
     return qid, "\n".join(lines)
 
@@ -110,13 +123,13 @@ def build_requests(
     n_options: int,
     reasoning_effort: str,
     options_key: str = "new_options",
+    is_instruct_model: bool = False,
 ) -> List[dict]:
-    #is_reasoning_model = "gpt-oss" in model_name.lower()
-    schema = answer_json_schema(n_options)
+    schema = answer_json_schema(n_options, is_instruct_model=is_instruct_model)
     requests = []
 
     for item in dataset:
-        custom_id, user_text = format_prompt(item, n_options, options_key)
+        custom_id, user_text = format_prompt(item, n_options, options_key, is_instruct_model=is_instruct_model)
 
         body: dict = {
             "model": model_name,
@@ -180,7 +193,7 @@ def main(args):
         answer_index_key = "answer_index"
         window_str = "baseline"
     else:
-        bench_root = f"data/bench/mmlu-pro-augmented-{args.n_options}"
+        bench_root = f"data/bench/mmlu-pro-augmented-clean-{args.n_options}"
         window_str = f"{args.window:.2f}"
         dataset_path = os.path.join(bench_root, f"seed_{args.seed}", f"window_{window_str}", args.mode)
         options_key = "new_options"
@@ -213,6 +226,8 @@ def main(args):
 
     # --- Output dir ---
     model_slug = args.model_name.split("/")[-1]
+    if "gpt-oss" in args.model_name.lower():
+        model_slug = f"{model_slug}-{args.reasoning_effort}"
     if args.baseline:
         dataset_tag = "mmlu-pro-augmented-10__baseline"
     else:
@@ -235,13 +250,14 @@ def main(args):
         "dataset_path": dataset_path,
         "output_dir": output_dir,
         "timestamp": now_str,
+        "is_instruct_model": args.is_instruct_model,
     }
     with open(os.path.join(output_dir, "run_config.json"), "w") as f:
         json.dump(config, f, indent=2)
     print(f"\nRun config saved to: {output_dir}/run_config.json")
 
     # Print a sample prompt for inspection
-    sample_id, sample_prompt = format_prompt(ds[0], n_options, options_key)
+    sample_id, sample_prompt = format_prompt(ds[0], n_options, options_key, args.is_instruct_model)
     print(f"\n--- Sample prompt (question_id={sample_id}) ---")
     sample_lines = sample_prompt.split("\n")
     preview = sample_lines[:6] + ["  ...", f"  ({n_options-1}) {ds[0][options_key][-1]}"] + sample_lines[-2:]
@@ -256,6 +272,7 @@ def main(args):
         n_options=n_options,
         reasoning_effort=args.reasoning_effort,
         options_key=options_key,
+        is_instruct_model=args.is_instruct_model,
     )
 
     # --- Upload and submit ---
@@ -321,7 +338,7 @@ if __name__ == "__main__":
         "--n-options",
         type=int,
         default=1000,
-        help="Number of options in the augmented dataset (e.g. 100, 500, 1000). Used to locate data/bench/mmlu-pro-augmented-<n>.",
+        help="Number of options in the augmented dataset (e.g. 100, 500, 1000). Used to locate data/bench/mmlu-pro-augmented-clean-<n>.",
     )
     parser.add_argument(
         "--seed",
@@ -344,4 +361,5 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    args.is_instruct_model = "instruct" in args.model_name.lower()
     main(args)

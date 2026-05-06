@@ -16,8 +16,7 @@ set -euo pipefail
 # -----------------------------------------------------------------------------
 
 # Model to run inference with (Together AI model path)
-MODEL="openai/gpt-oss-120b"   # "qwen/Qwen3.5-9B"  |  "google/gemma-4-31B-it"
-
+MODEL="Qwen/Qwen3.6-Plus"   # "qwen/Qwen3.5-9B"  |  "google/gemma-4-31B-it"
 # Window positions to submit (space-separated subset of: 0.0 0.25 0.5 0.75 1.0)
 WINDOWS=(0.0 0.25 0.5 0.75 1.0)
 
@@ -25,19 +24,19 @@ WINDOWS=(0.0 0.25 0.5 0.75 1.0)
 MODES=(block sparse)
 
 # Reasoning effort (only used for gpt-oss-* models)
-REASONING_EFFORT="medium"
+REASONING_EFFORT="high"
 
 # Distractor sampling seed — must match a seed_<N>/ folder produced by augment_final_dataset.py
 SEED=42
 
 # Number of options in the augmented dataset
-N_OPTIONS=1000
+N_OPTIONS=500
 
 # Run on the original 10-option baseline (ignores WINDOWS / MODES / SEED / N_OPTIONS)
-BASELINE=false
+BASELINE=true
 
 # Limit number of questions per job (leave empty for the full dataset)
-LIMIT=""
+LIMIT="10"
 
 # Base output directory (a timestamped subfolder is created per job)
 OUTPUT_DIR="out/completions"

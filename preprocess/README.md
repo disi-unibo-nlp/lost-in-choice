@@ -1,6 +1,6 @@
 # Preprocessing Pipeline
 
-This directory contains all scripts to build the benchmark dataset from scratch, starting from the raw MMLU-Pro HuggingFace dataset and ending with the 1000-option augmented variants ready for inference.
+This directory contains all scripts to build the benchmark dataset from scratch, starting from the raw MMLU-Pro HuggingFace dataset and ending with quality-controlled augmented variants ready for inference.
 
 Run scripts in the order listed below. Steps 2–3 must be repeated for each judge model used in categorization.
 
@@ -40,13 +40,35 @@ sample_final_dataset.py
 data/bench/mmlu-pro-augmented-10/       ← 1000-question benchmark, 10 options each
         │
         ▼
-augment_final_dataset_v2.py
-        │  5 windows × 2 modes × 3 seeds = 30 variants
+augment_final_dataset_v4.py
+        │  5 windows × 2 modes × 3 seeds = 30 variants, N ∈ {100, 500, 1000}
         ▼
-data/bench/mmlu-pro-augmented-1000/
+data/bench/mmlu-pro-augmented-{100,500,1000}/
   seed_42/window_0.00/block/
   seed_42/window_0.00/sparse/
   ...
+        │
+        ▼  ── DISTRACTOR QUALITY CONTROL ──────────────────────────────────────
+        │
+        ▼  (GPT-oss-120b for CS / law / health;  Gemini 2.0 Flash for math)
+check_distractors.py / check_distractor_gemini.py
+retrieve_distractor_check.py / retrieve_distractor_check_gemini.py
+        │
+        ▼
+merge_distractor_corrections.py         ← fold in manually-corrected parse failures
+merge_judge_outputs.py                  ← combine GPT and Gemini results by domain
+        │
+        ▼
+out/distractor_check/merged/block/flagged_distractors.jsonl
+        │
+        ▼
+apply_distractor_fixes.py
+        │  Replace flagged distractors; fallback to safe pool on collision
+        ▼
+data/bench/mmlu-pro-augmented-clean-{100,500,1000}/
+  seed_42/window_0.00/block/
+  seed_42/window_0.00/sparse/
+  ...                                   ← quality-controlled variants (used for inference)
 ```
 
 ---
@@ -101,8 +123,6 @@ python preprocess/categorize_mmlu.py \
 - `batch_together_<model>.jsonl` — uploaded batch requests
 - `job_id.txt` — Together AI job ID (needed for step 3)
 
-**Annotation prompt**: uses a structured dependency prompt with 5 worked examples covering edge cases (`which of the following`, `EXCEPT/NOT/LEAST`, composite True/False/Not-Given options). Uses regex-constrained decoding to force `option_dependent` or `option_independent`.
-
 Repeat this step for each judge model (e.g. `gpt-oss-120b`, `gemma-4-31B-it`).
 
 ---
@@ -116,21 +136,11 @@ Polls the batch job, downloads completions, parses labels, and saves the augment
 ```bash
 python preprocess/retrieve_categorize_mmlu.py \
   --dataset-dir mmlu_pro_downsampled_2858 \
-  --output-dir out/completions/gpt-oss-120b/categorization/2026-04-07_16-44-55 \
+  --output-dir out/completions/gpt-oss-120b/categorization/<timestamp> \
   --job-id <BATCH_JOB_ID>
 ```
 
-**Arguments**:
-
-| Argument | Default | Description |
-|---|---|---|
-| `--dataset-dir` | `mmlu_pro_downsampled_2858` | Original dataset (for metadata) |
-| `--output-dir` | — | Timestamp directory from step 2 |
-| `--job-id` | — | Together AI job ID from `job_id.txt` |
-
 **Output**: `mmlu_pro_downsampled_2858_categorized/<model_name>/` (HF dataset + JSONL)
-
-Prints dependency statistics and a per-category breakdown after saving.
 
 ---
 
@@ -138,12 +148,7 @@ Prints dependency statistics and a per-category breakdown after saving.
 
 **Script**: `combine_predictions.py`
 
-Merges predictions from all judge models in `mmlu_pro_downsampled_2858_categorized/` via majority voting. `gpt-oss-120b` is the primary tiebreaker.
-
-**Voting rules**:
-- 3 models: majority wins (≥ 2/3); all disagree → `gpt-oss-120b`
-- 2 models (one missing): agree → use that; disagree → `gpt-oss-120b`
-- 1 model: use `gpt-oss-120b` if available, else the only prediction
+Merges predictions from all judge models via majority voting. `gpt-oss-120b` is the primary tiebreaker.
 
 ```bash
 python preprocess/combine_predictions.py \
@@ -152,20 +157,7 @@ python preprocess/combine_predictions.py \
   --output-path mmlu_pro_downsampled_2858_categorized_combined
 ```
 
-**Arguments**:
-
-| Argument | Default | Description |
-|---|---|---|
-| `--categorized-dir` | `mmlu_pro_downsampled_2858_categorized` | Dir with one subfolder per judge model |
-| `--base-dataset-dir` | `mmlu_pro_downsampled_2858` | Original dataset (for metadata) |
-| `--output-path` | `mmlu_pro_downsampled_2858_categorized_combined` | Output path |
-
 **Output**: `mmlu_pro_downsampled_2858_categorized_combined/` (HF dataset + JSONL)
-
-Each record adds:
-- `option_dependent_vs_independent` — final majority-voted label
-- `vote_method` — `majority` / `primary_tiebreak` / `arbitrary_tiebreak`
-- `pred_<model>` — per-model raw prediction
 
 ---
 
@@ -173,30 +165,15 @@ Each record adds:
 
 **Script**: `sample_final_dataset.py`
 
-Builds the curated benchmark using two constraints:
-1. All 460 `option_dependent` questions are included.
-2. The remaining 540 slots are filled with `option_independent` questions, allocated to reach exactly 250 per category (via Hamilton's largest-remainder method).
+Builds the curated benchmark: all 460 `option_dependent` questions + 540 `option_independent` questions balanced to 250 per category.
 
 ```bash
 python preprocess/sample_final_dataset.py \
   --combined-path mmlu_pro_downsampled_2858_categorized_combined \
-  --output-path data/bench/mmlu-pro-augmented-10 \
-  --total 1000 \
-  --seed 42
+  --output-path data/bench/mmlu-pro-augmented-10
 ```
 
-**Arguments**:
-
-| Argument | Default | Description |
-|---|---|---|
-| `--combined-path` | `mmlu_pro_downsampled_2858_categorized_combined` | Output of step 4 |
-| `--output-path` | `data/bench/mmlu-pro-augmented-10` | Output path |
-| `--total` | `1000` | Target number of questions |
-| `--seed` | `42` | Sampling seed |
-
 **Output**: `data/bench/mmlu-pro-augmented-10/` (HF dataset + JSONL)
-
-Final composition:
 
 | Category         | option_dependent | option_independent | Total |
 |------------------|:----------------:|:------------------:|:-----:|
@@ -208,31 +185,21 @@ Final composition:
 
 ---
 
-## Step 6 — Augment to 1000 Options
+## Step 6 — Augment to N Options
 
-**Script**: `augment_final_dataset_v2.py`
+**Script**: `augment_final_dataset_v4.py`
 
-Expands each question from 10 to 1000 options across 30 variants (5 windows × 2 modes × 3 seeds). Distractors are drawn from same-category option texts in the 2858-question source pool, excluding the current question's own 10 options.
+Expands each question from 10 to N options across 30 variants (5 windows × 2 modes × 3 seeds) for each pool size N ∈ {100, 500, 1000}. Smaller pools are strict prefixes of larger ones (distractors(100) ⊆ distractors(500) ⊆ distractors(1000)).
 
 ```bash
-python preprocess/augment_final_dataset_v2.py \
+python preprocess/augment_final_dataset_v4.py \
   --dataset-path data/bench/mmlu-pro-augmented-10 \
   --source-dataset-path mmlu_pro_downsampled_2858 \
-  --n-options 1000 \
+  --n-options 100 500 1000 \
   --seeds 42 123 456
 ```
 
-**Arguments**:
-
-| Argument | Default | Description |
-|---|---|---|
-| `--dataset-path` | `data/bench/mmlu-pro-augmented-10` | 1000-question benchmark from step 5 |
-| `--source-dataset-path` | `mmlu_pro_downsampled_2858` | Full source dataset for distractor pools |
-| `--output-root` | `data/bench/mmlu-pro-augmented-<n>` | Root output directory |
-| `--n-options` | `1000` | Total options per question (must be divisible by 10) |
-| `--seeds` | `42 123 456` | Distractor sampling seeds |
-
-**Window positions** — the block of original options starts at `round(w × (N - 10))`:
+**Window positions** — gold answer lands at `block_start + answer_index`:
 
 | Window | Block start (N=1000) | Gold index range |
 |:------:|:--------------------:|:----------------:|
@@ -243,33 +210,128 @@ python preprocess/augment_final_dataset_v2.py \
 | 1.00   | 990                  | [990, 999]       |
 
 **Placement modes**:
-- `block` — original 10 options kept as a contiguous block at `block_start`.
-- `sparse` — gold answer at the same absolute index as block mode; the other 9 originals distributed one-per-segment across the remaining 9 segments of 100 slots each.
+- `block` — original 10 options as a contiguous block at `block_start`.
+- `sparse` — gold at the same absolute index as block; other 9 originals spread one-per-segment.
 
-Block vs. sparse share identical gold positions — any accuracy difference is attributable purely to option clustering, not gold position.
+**Output**: `data/bench/mmlu-pro-augmented-{N}/seed_<s>/window_<w>/{block,sparse}/`
 
-**Output**: `data/bench/mmlu-pro-augmented-1000/seed_<N>/window_<w>/{block,sparse}/` (HF dataset + JSONL per variant)
+Each record adds: `new_options`, `new_answer_index`, `block_start_index`, `window`, `placement_mode`.
 
-Each augmented record adds:
+---
 
-| Field | Description |
-|---|---|
-| `new_options` | List of 1000 option strings |
-| `new_answer_index` | Integer index of the correct answer |
-| `block_start_index` | Index where the original 10-option block starts |
-| `window` | Window fraction (0.0 / 0.25 / 0.5 / 0.75 / 1.0) |
-| `placement_mode` | `"block"` or `"sparse"` |
+## Steps 7–8 — Distractor Quality Check
+
+**Scripts**: `check_distractors.py` (Together AI / GPT) and `check_distractor_gemini.py` (Google Gemini)
+
+Randomly sampled distractors may be defensible answers to their question, which would confound positional-bias measurements. These scripts submit LLM judge jobs that check each distractor for correctness and propose replacements.
+
+Distractors are batched in groups of 100 per question. The judge returns a structured JSON response listing flagged items with reasons and replacement suggestions.
+
+**Model assignment**:
+- GPT-oss-120b → computer science, law, health
+- Gemini 2.0 Flash Preview → mathematics (better handling of numerical distractors)
+
+```bash
+# GPT-oss-120b (all domains, used for CS / law / health)
+bash scripts/check_distractors.sh
+
+# Gemini (math domain only)
+bash scripts/check_distractor_gemini.sh
+```
+
+After jobs complete, retrieve results:
+
+```bash
+bash scripts/retrieve_distractor_check.sh
+bash scripts/retrieve_distractor_check_gemini.sh
+```
+
+**Output**: `out/distractor_check/<model>/<domain>/<timestamp>/`
+- `flagged_distractors.jsonl` — one record per question with flagged items
+- `summary.json` — aggregate statistics
+- `raw_completions.jsonl` — raw API responses
+
+---
+
+## Step 9 — Merge Parse-Failure Corrections
+
+**Script**: `merge_distractor_corrections.py`
+
+Any batch responses that failed to parse are manually reviewed and stored as `fails_corrected.json` in the job output directory. This script folds those corrections back into the main `flagged_distractors.jsonl`.
+
+```bash
+python preprocess/merge_distractor_corrections.py \
+  --output-dir out/distractor_check/<model>/<domain>/<timestamp> \
+  --data data/bench/mmlu-pro-augmented-1000/seed_42/window_0.00/block.jsonl
+```
+
+---
+
+## Step 10 — Merge Judge Outputs by Domain
+
+**Script**: `merge_judge_outputs.py`
+
+Combines the GPT and Gemini `flagged_distractors.jsonl` files into a single merged file, substituting the Gemini results for the math domain.
+
+```bash
+python preprocess/merge_judge_outputs.py \
+  --base     out/distractor_check/openai_gpt-oss-120b/block/2026-04-24_15-04-12/flagged_distractors.jsonl \
+  --override out/distractor_check/gemini-3-flash-preview/block/math/2026-04-25_01-44-10/flagged_distractors.jsonl \
+  --category math \
+  --output   out/distractor_check/merged/block/flagged_distractors.jsonl
+```
+
+**Flagging summary** (post-merge):
+
+| Domain           | Flagged questions | Avg flags/q | Avg flags/flagged-q | Dup% |
+|------------------|:-----------------:|:-----------:|:-------------------:|:----:|
+| Computer Science | 107 / 250 (42.8%) |    0.96     |        2.24         | 1.7% |
+| Mathematics      | 128 / 250 (51.2%) |    5.79     |       11.30         | 6.4% |
+| Law              | 153 / 250 (61.2%) |    2.24     |        3.66         | 1.0% |
+| Health           | 127 / 250 (50.8%) |    1.61     |        3.17         | 1.0% |
+| **Overall**      | **515 / 1000 (51.5%)** | **2.65** | **5.14**       | **2.5%** |
+
+*Dup%: fraction of replacement suggestions that are duplicates within the same question.*
+
+---
+
+## Step 11 — Apply Distractor Fixes
+
+**Script**: `apply_distractor_fixes.py` (or `bash scripts/apply_distractor_fixes.sh`)
+
+Applies the replacement map to all 30 variants for each pool size. Replacements are matched by distractor text, making them position-independent and valid across all window/mode combinations.
+
+**Fallback logic**: when the judge's suggested replacement text matches one of the original 10 options (which would break sparse-mode structural invariants), a safe alternative is drawn uniformly at random from the distractors that passed the judge's sweep without being flagged.
+
+```bash
+python preprocess/apply_distractor_fixes.py \
+  --flagged-jsonl out/distractor_check/merged/block/flagged_distractors.jsonl \
+  --seed 42 \
+  --n-options 100 500 1000 \
+  --output-base      data/bench/mmlu-pro-augmented \
+  --output-base-out  data/bench/mmlu-pro-augmented-clean
+```
+
+**Output**: `data/bench/mmlu-pro-augmented-clean-{100,500,1000}/seed_42/` — structurally identical to the original augmented datasets; all sanity checks A–K pass.
+
+At N=1000: 2,649 replacements applied (2,235 direct + 414 fallbacks), zero gold-answer collisions.
 
 ---
 
 ## Analysis Scripts (`analysis/`)
 
-These scripts are for inspection and sanity-checking intermediate outputs. They do not modify data.
+| Script | Purpose |
+|---|---|
+| `sanity_check_v4.py` | Full structural verification of augmented datasets (checks A–K) |
+| `distractor_intervention_stats.py` | Flag-rate statistics across domains |
+| `pilot_distractor_judge.py` | Pilot evaluation of judge model candidates |
+| `explore_dataset.py` | Category and label distributions |
+| `check_reproducibility.py` | Verify deterministic augmentation across runs |
+| `inspect_batch_alignment.py` | Check alignment between uploaded requests and retrieved completions |
+
+## Utility Scripts (`preprocess/`)
 
 | Script | Purpose |
 |---|---|
-| `explore_dataset.py` | Explore category and label distributions |
-| `sanity_check_augmented.py` | Verify augmented option counts and gold positions |
-| `sanity_check_v2.py` | Extended checks on v2 augmentation invariants |
-| `check_reproducibility.py` | Verify that rerunning augmentation with the same seed gives identical results |
-| `inspect_batch_alignment.py` | Check alignment between uploaded batch requests and retrieved completions |
+| `distractor_correction_stats.py` | Print and export per-domain correction statistics |
+| `export_corrections_table.py` | Generate LaTeX table of correction examples for paper appendix |

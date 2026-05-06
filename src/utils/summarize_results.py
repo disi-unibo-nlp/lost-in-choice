@@ -3,9 +3,11 @@ Summarize MMLU-Pro augmented experiment results for a given model folder.
 
 Usage:
     python summarize_results.py --model-dir out/completions/Qwen3.5-9B
-    python summarize_results.py --model-dir out/completions/Qwen3.5-9B --seed 42 \
-        --n-options 100 500 1000 \
-        --baseline out/completions/gpt-oss-120b/mmlu-pro-augmented-10__baseline/2026-04-16_22-44-00
+    python3 src/utils/summarize_results.py --model-dir out/completions/gpt-oss-120b --seed 42 --n-options 100 500 1000 --baseline out/completions/gpt-oss-120b/mmlu-pro-augmented-10__baseline/2026-04-16_22-44-00
+    python3 src/utils/summarize_results.py --model-dir out/completions/gemini-3-flash-preview --seed 42 --n-options 1000 500 100 --baseline out/completions/gemini-3-flash-preview/mmlu-pro-augmented-10__baseline/2026-05-04_13-48-09
+    python3 src/utils/summarize_results.py --model-dir out/completions/gemma-4-31B-it --seed 42 --n-options 100 500 1000 --baseline out/completions/gemma-4-31B-it/mmlu-pro-augmented-10__baseline/2026-04-28_11-32-11
+    python3 src/utils/summarize_results.py --model-dir out/completions/Qwen3.5-9B --seed 42 --n-options 100 500 1000 --baseline out/completions/Qwen3.5-9B/mmlu-pro-augmented-10__baseline
+
     python summarize_results.py --model-dir out/completions/gpt-oss-120b --mode block
     python summarize_results.py --model-dir out/completions/Qwen3.5-9B --mode sparse
 """
@@ -19,6 +21,19 @@ from typing import List, Dict, Any, Optional
 import pandas as pd
 
 
+def _latest_metrics(exp_dir: Path) -> Optional[Dict[str, Any]]:
+    ts_dirs = sorted(d for d in exp_dir.iterdir() if d.is_dir())
+    if not ts_dirs:
+        print(f"  [warn] no timestamp subfolder in {exp_dir}")
+        return None
+    metrics_path = ts_dirs[-1] / "metrics.json"
+    if not metrics_path.exists():
+        print(f"  [warn] metrics.json missing: {metrics_path}")
+        return None
+    with open(metrics_path) as f:
+        return json.load(f)
+
+
 def find_metrics(model_dir: Path, seed: int, n_options: int, placement: str) -> List[Dict[str, Any]]:
     pattern = re.compile(
         rf"mmlu-pro-augmented-{n_options}__seed_{seed}__window_(?P<window>[\d.]+)__{placement}"
@@ -29,16 +44,9 @@ def find_metrics(model_dir: Path, seed: int, n_options: int, placement: str) -> 
         if not m:
             continue
         window = float(m.group("window"))
-        ts_dirs = sorted(d for d in exp_dir.iterdir() if d.is_dir())
-        if not ts_dirs:
-            print(f"  [warn] no timestamp subfolder in {exp_dir}")
+        data = _latest_metrics(exp_dir)
+        if data is None:
             continue
-        metrics_path = ts_dirs[-1] / "metrics.json"
-        if not metrics_path.exists():
-            print(f"  [warn] metrics.json missing: {metrics_path}")
-            continue
-        with open(metrics_path) as f:
-            data = json.load(f)
         row = {"window": window}
         row["overall"] = round(data["accuracy"] * 100, 1)
         for cat, vals in data.get("per_category", {}).items():
@@ -47,6 +55,42 @@ def find_metrics(model_dir: Path, seed: int, n_options: int, placement: str) -> 
             row[dep] = round(vals["accuracy"] * 100, 1)
         rows.append(row)
     return sorted(rows, key=lambda r: r["window"])
+
+
+def find_option_type_metrics(model_dir: Path, seed: int, n_options: int, placement: str) -> List[Dict[str, Any]]:
+    pattern = re.compile(
+        rf"mmlu-pro-augmented-{n_options}__seed_{seed}__window_(?P<window>[\d.]+)__{placement}"
+    )
+    rows = []
+    for exp_dir in sorted(model_dir.iterdir()):
+        m = pattern.fullmatch(exp_dir.name)
+        if not m:
+            continue
+        window = float(m.group("window"))
+        data = _latest_metrics(exp_dir)
+        if data is None:
+            continue
+        ots = data.get("option_type_stats")
+        if ots is None:
+            print(f"  [warn] option_type_stats missing in {exp_dir}")
+            continue
+        rows.append({
+            "window": window,
+            "pct_any_original": round(ots["pct_any_original"], 1),
+            "pct_distractor": round(ots["pct_distractor"], 1),
+        })
+    return sorted(rows, key=lambda r: r["window"])
+
+
+def build_option_type_df(rows: List[Dict[str, Any]]) -> pd.DataFrame:
+    df = pd.DataFrame(rows).set_index("window")
+    df = df.rename(columns={
+        "pct_any_original": "Any-Original (%)",
+        "pct_distractor": "Distractor (%)",
+    })
+    df.index = df.index.map(lambda w: f"{w:.2f}")
+    df.index.name = "Window"
+    return df
 
 
 def build_df(rows: List[Dict[str, Any]]) -> pd.DataFrame:
@@ -103,6 +147,7 @@ def resolve_baseline(baseline_arg: str) -> Optional[pd.DataFrame]:
 def df_to_latex(df: pd.DataFrame, caption: str, label: str, baseline_df: Optional[pd.DataFrame] = None) -> str:
     if baseline_df is not None:
         df = pd.concat([baseline_df, df])
+    df = df.fillna("-")
     return df.to_latex(
         float_format="%.1f",
         caption=caption,
@@ -141,9 +186,16 @@ def main():
                 print(f"[warn] no results for n_options={n_options} placement={placement}")
                 continue
             df = build_df(rows)
+
+            ot_rows = find_option_type_metrics(model_dir, args.seed, n_options, placement)
+            if ot_rows:
+                ot_df = build_option_type_df(ot_rows)
+                df = df.join(ot_df)
+
             all_results[n_options][placement] = df
             print(f"\n=== {placement.upper()} | n_options={n_options} | seed={args.seed} ===")
-            print(df.to_string())
+            display_df = pd.concat([baseline_df, df]) if baseline_df is not None else df
+            print(display_df.fillna("-").to_string())
 
     # Export CSVs (one per n_options × placement)
     for n_options, mode_dfs in all_results.items():

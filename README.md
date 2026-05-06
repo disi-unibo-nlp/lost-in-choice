@@ -29,35 +29,36 @@ Starting from MMLU-Pro (4 domains: computer science, health, law, math), we buil
 | law              |       193        |         57         |  250  |
 | math             |        78        |        172         |  250  |
 
-Each question is then augmented to 1000 options across **30 variants** (5 windows × 2 modes × 3 seeds). Distractors are drawn from same-category option texts in the source dataset, excluding the current question's own 10 options.
+Each question is augmented to N options (N ∈ {100, 500, 1000}) across **30 variants** (5 windows × 2 modes × 3 seeds). Distractors are drawn from same-category option texts in the source dataset. Before inference, all distractors are validated by an LLM judge and any defensible answers are replaced — see Phase 1b below.
 
 ## Repository Structure
 
 ```
-preprocess/          ← dataset construction pipeline (see preprocess/README.md)
+preprocess/          ← dataset construction + distractor QC pipeline (see preprocess/README.md)
   analysis/          ← sanity checks, stats, exploration
 src/                 ← experiment code (inference + evaluation)
-  utils/
-scripts/             ← shell helpers
+  utils/             ← result summarization helpers
+scripts/             ← shell helpers for batch jobs
 notes/               ← research notes and design documents
-data/                ← datasets (gitignored)
+data/                ← datasets (gitignored, populated by pipeline)
 out/                 ← batch job outputs (gitignored)
 ```
 
 ## Setup
 
 ```bash
-pip install datasets together python-dotenv
+pip install datasets together python-dotenv google-genai
 ```
 
 Create a `.env` file:
 ```
 TOGETHER_API_KEY=...
+GOOGLE_API_KEY=...
 ```
 
 ## Pipeline
 
-The full pipeline runs in two phases. See [`preprocess/README.md`](preprocess/README.md) for detailed instructions, all script arguments, and intermediate output formats.
+The full pipeline runs in three phases. See [`preprocess/README.md`](preprocess/README.md) for detailed instructions, all script arguments, and intermediate output formats.
 
 ### Phase 1 — Build the benchmark (`preprocess/`)
 
@@ -68,9 +69,23 @@ The full pipeline runs in two phases. See [`preprocess/README.md`](preprocess/RE
 | 3 | `retrieve_categorize_mmlu.py` | `mmlu_pro_downsampled_2858_categorized/<model>/` |
 | 4 | `combine_predictions.py` | `mmlu_pro_downsampled_2858_categorized_combined/` |
 | 5 | `sample_final_dataset.py` | `data/bench/mmlu-pro-augmented-10/` |
-| 6 | `augment_final_dataset_v2.py` | `data/bench/mmlu-pro-augmented-1000/` (30 variants) |
+| 6 | `augment_final_dataset_v4.py` | `data/bench/mmlu-pro-augmented-{100,500,1000}/` (30 variants each) |
 
 Steps 2–3 are repeated for each judge model used in categorization.
+
+### Phase 1b — Distractor quality control (`preprocess/`)
+
+Synthetically generated distractors may occasionally be defensible answers. This phase identifies and replaces them before inference to avoid confounding positional-bias measurements.
+
+| Step | Script | Output |
+|------|--------|--------|
+| 7 | `check_distractors.py` / `check_distractor_gemini.py` | batch job per domain |
+| 8 | `retrieve_distractor_check.py` / `retrieve_distractor_check_gemini.py` | `out/distractor_check/<model>/<domain>/<timestamp>/flagged_distractors.jsonl` |
+| 9 | `merge_distractor_corrections.py` | updated `flagged_distractors.jsonl` (parse-failure fixes merged) |
+| 10 | `merge_judge_outputs.py` | `out/distractor_check/merged/block/flagged_distractors.jsonl` |
+| 11 | `apply_distractor_fixes.py` | `data/bench/mmlu-pro-augmented-clean-{100,500,1000}/` |
+
+GPT-oss-120b is used as judge for computer science, law, and health; Gemini 2.0 Flash Preview for mathematics. Overall 51.5% of questions have ≥ 1 flagged distractor (2,649 replacements applied across the benchmark).
 
 ### Phase 2 — Run inference (`src/`)
 
@@ -86,6 +101,8 @@ python src/retrieve_inference.py \
   --output-dir out/completions/gpt-oss-120b/<dataset_tag>/<timestamp>
 ```
 
+Inference reads from `data/bench/mmlu-pro-augmented-clean-{N}/` (the quality-controlled dataset).
+
 ## Experimental Conditions
 
 | Comparison | What it reveals |
@@ -94,3 +111,4 @@ python src/retrieve_inference.py \
 | Block vs. sparse at the same window | Effect of local option clustering |
 | option_dependent vs. option_independent | Whether answer derivability interacts with positional bias |
 | Per-category breakdown across windows | Domain-specific sensitivity to option position |
+| N = 100 vs. 500 vs. 1000 | How bias scales with option list length |
