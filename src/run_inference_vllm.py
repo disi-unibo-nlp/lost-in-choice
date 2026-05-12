@@ -42,7 +42,7 @@ from datasets import load_from_disk
 # ---------------------------------------------------------------------------
 VALID_WINDOWS = [0.0, 0.25, 0.5, 0.75, 1.0]
 VALID_MODES = ["block", "sparse"]
-DEFAULT_MODEL = "Qwen/Qwen3-27B-FP8"
+DEFAULT_MODEL = "Qwen/Qwen3.5-27B-FP8"
 DEFAULT_MAX_TOKENS = 32000
 
 
@@ -155,16 +155,23 @@ def evaluate(raw_path: str, output_dir: str, run_config: dict):
 
     predictions = []
     parse_failures = 0
+    incomplete_reasoning_count = 0
 
     for item in completions:
         qid = item.get("custom_id", "")
-        content = (
+        msg = (
             item.get("response", {})
             .get("body", {})
             .get("choices", [{}])[0]
             .get("message", {})
-            .get("content", "")
         )
+        content = msg.get("content", "")
+        reasoning = msg.get("reasoning", None)
+        incomplete_reasoning = reasoning == ""
+
+        if incomplete_reasoning:
+            incomplete_reasoning_count += 1
+
         predicted = parse_answer(content)
 
         if predicted is None:
@@ -172,12 +179,12 @@ def evaluate(raw_path: str, output_dir: str, run_config: dict):
 
         meta = gold_map.get(qid, {})
         gold = meta.get("gold_index")
-        correct = (predicted == gold) if (predicted is not None and gold is not None) else None
+        correct = (predicted == gold) if (predicted is not None and gold is not None and not incomplete_reasoning) else None
 
         orig_indices = meta.get("original_option_indices")
         hit_original_option = (
             (predicted in orig_indices)
-            if (predicted is not None and orig_indices is not None)
+            if (predicted is not None and orig_indices is not None and not incomplete_reasoning)
             else None
         )
 
@@ -192,6 +199,7 @@ def evaluate(raw_path: str, output_dir: str, run_config: dict):
             "window": meta.get("window"),
             "placement_mode": meta.get("placement_mode"),
             "parse_failed": predicted is None,
+            "incomplete_reasoning": incomplete_reasoning,
         }
         predictions.append(record)
 
@@ -200,6 +208,13 @@ def evaluate(raw_path: str, output_dir: str, run_config: dict):
         for rec in predictions:
             f.write(json.dumps(rec) + "\n")
     print(f"Predictions saved to: {pred_path}")
+
+    incomplete_ids = [r["question_id"] for r in predictions if r.get("incomplete_reasoning")]
+    if incomplete_ids:
+        incomplete_path = os.path.join(output_dir, "incomplete_reasoning_ids.json")
+        with open(incomplete_path, "w") as f:
+            json.dump(incomplete_ids, f, indent=2)
+        print(f"Incomplete reasoning IDs ({len(incomplete_ids)}) saved to: {incomplete_path}")
 
     evaluated = [r for r in predictions if r["correct"] is not None]
     n_total = len(predictions)
@@ -258,6 +273,7 @@ def evaluate(raw_path: str, output_dir: str, run_config: dict):
         "placement_mode": run_config.get("mode"),
         "n_options": n_options,
         "n_questions": n_total,
+        "n_incomplete_reasoning": incomplete_reasoning_count,
         "n_evaluated": len(evaluated),
         "n_correct": n_correct,
         "accuracy": round(accuracy, 4),
@@ -305,6 +321,7 @@ def evaluate(raw_path: str, output_dir: str, run_config: dict):
     print(f"  Window  : {metrics['window']}  |  Mode: {metrics['placement_mode']}")
     print(f"  Accuracy: {n_correct}/{len(evaluated)}  ({100 * accuracy:.1f}%)")
     print(f"  Parse failures: {parse_failures}")
+    print(f"  Incomplete reasoning (excluded): {incomplete_reasoning_count}")
     print(f"\n  Per-category accuracy:")
     for cat, v in metrics["per_category"].items():
         print(f"    {cat:<22} {v['correct']:>4}/{v['total']:<4}  ({100 * v['accuracy']:.1f}%)")
@@ -338,14 +355,50 @@ def evaluate(raw_path: str, output_dir: str, run_config: dict):
 # Entry point
 # ---------------------------------------------------------------------------
 
-def main(args):
-    from vllm import LLM, SamplingParams
+def _split_thinking(text: str):
+    """Split vLLM output into (reasoning, content).
 
-    try:
-        from vllm.sampling_params import GuidedDecodingParams
-        _has_guided_params = True
-    except ImportError:
-        _has_guided_params = False
+    Qwen3's chat template places <think> in the prompt, so the generated text
+    starts directly with reasoning and ends with </think>{answer}. We also
+    handle the older style where <think> appears in the generated output.
+    Returns (reasoning_text, answer_text); reasoning is empty string if absent.
+    """
+    if "</think>" in text:
+        think_end = text.index("</think>")
+        # <think> may be in the prompt (not in generated text)
+        if "<think>" in text[:think_end]:
+            think_start = text.index("<think>") + len("<think>")
+        else:
+            think_start = 0
+        reasoning = text[think_start:think_end].strip()
+        content = text[think_end + len("</think>"):].strip()
+        return reasoning, content
+    return "", text
+
+
+def main(args):
+    # --- Eval-only mode: re-score existing raw_completions.jsonl ---
+    if args.eval_only:
+        if not args.run_dir:
+            print("ERROR: --eval-only requires --run-dir pointing to an existing output directory.", file=sys.stderr)
+            sys.exit(1)
+        run_config_path = os.path.join(args.run_dir, "run_config.json")
+        if not os.path.isfile(run_config_path):
+            print(f"ERROR: run_config.json not found in {args.run_dir}", file=sys.stderr)
+            sys.exit(1)
+        with open(run_config_path) as f:
+            config = json.load(f)
+        raw_path = os.path.join(args.run_dir, "raw_completions.jsonl")
+        if not os.path.isfile(raw_path):
+            print(f"ERROR: raw_completions.jsonl not found in {args.run_dir}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Eval-only mode — re-scoring: {raw_path}")
+        evaluate(raw_path, args.run_dir, config)
+        return
+
+    from vllm import LLM, SamplingParams
+    from vllm.config import StructuredOutputsConfig
+    from vllm.sampling_params import StructuredOutputsParams
 
     # --- Resolve dataset path ---
     if args.baseline:
@@ -372,6 +425,14 @@ def main(args):
 
     print(f"Loading dataset: {dataset_path}")
     ds = load_from_disk(dataset_path)
+
+    if args.retry_ids_file:
+        with open(args.retry_ids_file) as f:
+            retry_ids = set(json.load(f))
+        indices_to_keep = [i for i, row in enumerate(ds) if str(row["question_id"]) in retry_ids]
+        ds = ds.select(indices_to_keep)
+        print(f"  Retrying {len(ds)} questions from: {args.retry_ids_file}")
+
     if args.limit:
         ds = ds.select(range(min(args.limit, len(ds))))
 
@@ -396,8 +457,12 @@ def main(args):
             f"__window_{window_str}"
             f"__{args.mode}"
         )
-    now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    output_dir = os.path.join(args.output_dir, model_slug, dataset_tag, now_str)
+    if args.run_dir:
+        output_dir = args.run_dir
+        now_str = os.path.basename(output_dir)
+    else:
+        now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        output_dir = os.path.join(args.output_dir, model_slug, dataset_tag, now_str)
     os.makedirs(output_dir, exist_ok=True)
 
     # --- Save run config ---
@@ -440,37 +505,41 @@ def main(args):
 
     # --- Load model ---
     print(f"Loading model: {args.model_name}")
-    llm_kwargs = {"model": args.model_name}
+    is_qwen3_model = "qwen3" in args.model_name.lower()
+    structured_outputs_config = StructuredOutputsConfig(
+        # enable_in_reasoning=False: JSON constraint activates only AFTER
+        # </think>, so the model can think freely before the answer.
+        # reasoning_parser tells vLLM where the boundary is.
+        enable_in_reasoning=False,
+        reasoning_parser="qwen3" if is_qwen3_model else "",
+    )
+    llm_kwargs = {
+        "model": args.model_name,
+        "structured_outputs_config": structured_outputs_config,
+    }
     if args.tensor_parallel_size > 1:
         llm_kwargs["tensor_parallel_size"] = args.tensor_parallel_size
     if args.max_model_len is not None:
         llm_kwargs["max_model_len"] = args.max_model_len
+    if args.enforce_eager:
+        llm_kwargs["enforce_eager"] = True
 
     llm = LLM(**llm_kwargs)
 
-    # --- Sampling params with guided JSON decoding ---
+    # --- Sampling params with structured JSON output ---
+    # enable_in_reasoning=True on LLM() allows the JSON constraint to apply
+    # after the <think> block, so reasoning and structured output coexist.
     json_schema = build_json_schema(n_options)
-    if _has_guided_params:
-        from vllm.sampling_params import GuidedDecodingParams
-        guided = GuidedDecodingParams(json=json_schema)
-        sampling_params = SamplingParams(
-            max_tokens=args.max_tokens,
-            guided_decoding=guided,
-        )
-    else:
-        sampling_params = SamplingParams(
-            max_tokens=args.max_tokens,
-            guided_json=json_schema,
-        )
+    sampling_params = SamplingParams(
+        max_tokens=args.max_tokens,
+        structured_outputs=StructuredOutputsParams(json=json_schema),
+    )
 
     # --- Run inference ---
     print(f"Running inference on {len(all_messages)} questions...")
 
-    # Qwen3 chat template supports enable_thinking to suppress <think> tokens,
-    # which would otherwise interfere with constrained JSON generation.
-    is_qwen3 = "qwen3" in args.model_name.lower()
     chat_kwargs: dict = {}
-    if is_qwen3:
+    if is_qwen3_model:
         chat_kwargs["chat_template_kwargs"] = {"enable_thinking": args.enable_thinking}
 
     outputs = llm.chat(all_messages, sampling_params=sampling_params, **chat_kwargs)
@@ -479,12 +548,20 @@ def main(args):
     raw_path = os.path.join(output_dir, "raw_completions.jsonl")
     with open(raw_path, "w") as f:
         for qid, output in zip(custom_ids, outputs):
-            content = output.outputs[0].text if output.outputs else ""
+            raw_text = output.outputs[0].text if output.outputs else ""
+            reasoning, content = _split_thinking(raw_text)
             record = {
                 "custom_id": qid,
+                "n_prompt_tokens": len(output.prompt_token_ids),
+                "n_completion_tokens": len(output.outputs[0].token_ids) if output.outputs else 0,
                 "response": {
                     "body": {
-                        "choices": [{"message": {"content": content}}]
+                        "choices": [{
+                            "message": {
+                                "reasoning": reasoning,
+                                "content": content,
+                            }
+                        }]
                     }
                 },
             }
@@ -525,6 +602,13 @@ if __name__ == "__main__":
         type=str,
         default="out/completions",
         help="Base directory for output files.",
+    )
+    parser.add_argument(
+        "--run-dir",
+        type=str,
+        default=None,
+        help="Full output directory to use directly (skips auto-generated subdirs). "
+             "Useful when the caller pre-creates the dir and wants logs co-located.",
     )
     parser.add_argument(
         "--n-options",
@@ -577,6 +661,27 @@ if __name__ == "__main__":
         help="Disable Qwen3 thinking mode (enabled by default).",
     )
     parser.set_defaults(enable_thinking=True)
+    parser.add_argument(
+        "--enforce-eager",
+        action="store_true",
+        default=False,
+        dest="enforce_eager",
+        help="Disable CUDA graph capture and torch.compile (slower throughput, faster startup).",
+    )
+    parser.add_argument(
+        "--eval-only",
+        action="store_true",
+        default=False,
+        dest="eval_only",
+        help="Skip inference; re-score existing raw_completions.jsonl in --run-dir.",
+    )
+    parser.add_argument(
+        "--retry-ids-file",
+        type=str,
+        default=None,
+        dest="retry_ids_file",
+        help="Path to incomplete_reasoning_ids.json; restricts inference to those question IDs.",
+    )
 
     args = parser.parse_args()
     main(args)
