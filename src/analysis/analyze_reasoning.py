@@ -200,7 +200,9 @@ def load_records(completions_dir: Path, models_filter: Optional[list]) -> list:
                     qid  = str(item.get("custom_id", ""))
                     body = item.get("response", {}).get("body", {})
 
-                    comp_tk = (body.get("usage", {}).get("completion_tokens") or 0)
+                    comp_tk = (body.get("usage", {}).get("completion_tokens")
+                               or item.get("n_completion_tokens")
+                               or 0)
                     if not comp_tk and qid in gemini_usage:
                         comp_tk = gemini_usage[qid]
 
