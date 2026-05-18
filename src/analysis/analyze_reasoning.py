@@ -192,11 +192,16 @@ def load_records(completions_dir: Path, models_filter: Optional[list]) -> list:
             window    = float(m.group("window"))
             mode      = m.group("mode")
 
+            bad_lines = 0
             with open(raw_path) as f:
                 for line in f:
                     if not line.strip():
                         continue
-                    item = json.loads(line)
+                    try:
+                        item = json.loads(line)
+                    except json.JSONDecodeError:
+                        bad_lines += 1
+                        continue
                     qid  = str(item.get("custom_id", ""))
                     body = item.get("response", {}).get("body", {})
 
@@ -220,6 +225,8 @@ def load_records(completions_dir: Path, models_filter: Optional[list]) -> list:
                         "option_dep":        pred.get("option_dep", "unknown"),
                         "run_dir":           str(run_dir),
                     })
+            if bad_lines:
+                print(f"  WARNING: {bad_lines} malformed JSON lines skipped in {raw_path}")
 
     print(f"Loaded {len(records)} question records  ({skipped} run dirs skipped — missing files)")
     return records

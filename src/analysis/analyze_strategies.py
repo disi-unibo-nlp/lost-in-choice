@@ -85,24 +85,51 @@ def build_token_lookup(completions_dir: str) -> dict:
             slug    = model_dir.name
 
             ts_dirs = sorted(d for d in dataset_dir.iterdir() if d.is_dir())
-            raw_path = None
+            run_dir = None
             for d in reversed(ts_dirs):
-                candidate = d / "raw_completions.jsonl"
-                if candidate.exists():
-                    raw_path = candidate
+                if (d / "raw_completions.jsonl").exists():
+                    run_dir = d
                     break
-            if raw_path is None:
+            if run_dir is None:
                 continue
+
+            raw_path = run_dir / "raw_completions.jsonl"
+
+            # Gemini: build usage lookup from raw_completions_gemini.jsonl
+            gemini_usage: dict = {}
+            gemini_path = run_dir / "raw_completions_gemini.jsonl"
+            if gemini_path.exists():
+                with open(gemini_path) as f:
+                    for line in f:
+                        if not line.strip():
+                            continue
+                        try:
+                            rec = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        cid  = str(rec.get("custom_id", ""))
+                        meta = rec.get("response", {}).get("usageMetadata", {})
+                        gemini_usage[cid] = (
+                            meta.get("thoughtsTokenCount", 0)
+                            + meta.get("candidatesTokenCount", 0)
+                        )
 
             with open(raw_path) as f:
                 for line in f:
                     if not line.strip():
                         continue
-                    item  = json.loads(line)
-                    qid   = str(item.get("custom_id", ""))
-                    body  = item.get("response", {}).get("body", {})
-                    usage = body.get("usage", {})
-                    comp_tk = usage.get("completion_tokens") or 0
+                    try:
+                        item = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    qid     = str(item.get("custom_id", ""))
+                    body    = item.get("response", {}).get("body", {})
+                    comp_tk = (
+                        (body.get("usage") or {}).get("completion_tokens")
+                        or item.get("n_completion_tokens")  # vllm
+                        or gemini_usage.get(qid)            # Gemini
+                        or 0
+                    )
                     msg   = body.get("choices", [{}])[0].get("message", {})
                     r_txt = msg.get("reasoning") or ""
                     if not r_txt:
@@ -227,6 +254,181 @@ def strategy_x_option_dep(records: list) -> dict:
     return result
 
 
+def strategy_x_two_dims(records: list, dim1: str, dim2: str) -> dict:
+    """
+    For each (dim1, dim2) cell: strategy freq table + per-strategy accuracy.
+    Returns {dim1_val: {dim2_val: {n, strategy_distribution, strategy_x_correctness}}}.
+    """
+    groups: dict = defaultdict(lambda: defaultdict(list))
+    for r in records:
+        groups[str(r.get(dim1, "unknown"))][str(r.get(dim2, "unknown"))].append(r)
+
+    def _sk(v):
+        try:
+            return (0, float(v))
+        except ValueError:
+            return (1, v)
+
+    result: dict = {}
+    for d1 in sorted(groups, key=_sk):
+        result[d1] = {}
+        for d2 in sorted(groups[d1], key=_sk):
+            cell = groups[d1][d2]
+            result[d1][d2] = {
+                "n": len(cell),
+                "strategy_distribution": freq_table(cell, "primary_strategy"),
+                "strategy_x_correctness": strategy_x_correctness(cell),
+            }
+    return result
+
+
+def strategy_x_three_dims(records: list, dim1: str, dim2: str, dim3: str) -> dict:
+    """
+    For each (dim1, dim2, dim3) cell: strategy freq table + per-strategy accuracy.
+    Returns {dim1_val: {dim2_val: {dim3_val: {n, strategy_distribution, strategy_x_correctness}}}}.
+    """
+    groups: dict = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    for r in records:
+        groups[str(r.get(dim1, "unknown"))][str(r.get(dim2, "unknown"))][str(r.get(dim3, "unknown"))].append(r)
+
+    def _sk(v):
+        try:
+            return (0, float(v))
+        except ValueError:
+            return (1, v)
+
+    result: dict = {}
+    for d1 in sorted(groups, key=_sk):
+        result[d1] = {}
+        for d2 in sorted(groups[d1], key=_sk):
+            result[d1][d2] = {}
+            for d3 in sorted(groups[d1][d2], key=_sk):
+                cell = groups[d1][d2][d3]
+                result[d1][d2][d3] = {
+                    "n": len(cell),
+                    "strategy_distribution": freq_table(cell, "primary_strategy"),
+                    "strategy_x_correctness": strategy_x_correctness(cell),
+                }
+    return result
+
+
+def strategy_x_four_dims(records: list, dim1: str, dim2: str, dim3: str, dim4: str) -> dict:
+    """
+    For each (dim1, dim2, dim3, dim4) cell: strategy freq table + per-strategy accuracy.
+    Returns nested dict {d1: {d2: {d3: {d4: {n, strategy_distribution, strategy_x_correctness}}}}}.
+    """
+    groups: dict = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
+    for r in records:
+        d1 = str(r.get(dim1, "unknown"))
+        d2 = str(r.get(dim2, "unknown"))
+        d3 = str(r.get(dim3, "unknown"))
+        d4 = str(r.get(dim4, "unknown"))
+        groups[d1][d2][d3][d4].append(r)
+
+    def _sk(v):
+        try:
+            return (0, float(v))
+        except ValueError:
+            return (1, v)
+
+    result: dict = {}
+    for d1 in sorted(groups, key=_sk):
+        result[d1] = {}
+        for d2 in sorted(groups[d1], key=_sk):
+            result[d1][d2] = {}
+            for d3 in sorted(groups[d1][d2], key=_sk):
+                result[d1][d2][d3] = {}
+                for d4 in sorted(groups[d1][d2][d3], key=_sk):
+                    cell = groups[d1][d2][d3][d4]
+                    result[d1][d2][d3][d4] = {
+                        "n": len(cell),
+                        "strategy_distribution": freq_table(cell, "primary_strategy"),
+                        "strategy_x_correctness": strategy_x_correctness(cell),
+                    }
+    return result
+
+
+def accuracy_x_three_dims(records: list, dim1: str, dim2: str, dim3: str) -> dict:
+    """
+    For each (dim1, dim2, dim3) cell: accuracy per strategy.
+    Returns {dim1_val: {dim2_val: {dim3_val: {strategy: accuracy}}}}.
+    """
+    buckets: dict = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {"n": 0, "n_correct": 0})))
+    )
+    for r in records:
+        d1 = str(r.get(dim1, "unknown"))
+        d2 = str(r.get(dim2, "unknown"))
+        d3 = str(r.get(dim3, "unknown"))
+        code = r["primary_strategy"]
+        buckets[d1][d2][d3][code]["n"] += 1
+        if r["correct"]:
+            buckets[d1][d2][d3][code]["n_correct"] += 1
+
+    def _sk(v):
+        try:
+            return (0, float(v))
+        except ValueError:
+            return (1, v)
+
+    result: dict = {}
+    for d1 in sorted(buckets, key=_sk):
+        result[d1] = {}
+        for d2 in sorted(buckets[d1], key=_sk):
+            result[d1][d2] = {}
+            for d3 in sorted(buckets[d1][d2], key=_sk):
+                result[d1][d2][d3] = {
+                    code: round(v["n_correct"] / v["n"], 3) if v["n"] else None
+                    for code, v in buckets[d1][d2][d3].items()
+                }
+    return result
+
+
+# -------------------------------------------------------------------------
+# Selected-vs-gold positional stats (wrong predictions only)
+# -------------------------------------------------------------------------
+
+def selected_before_gold_stats(records: list) -> dict:
+    """
+    For incorrect records: fraction where predicted_index < gold_index (before)
+    vs predicted_index > gold_index (after).
+    Only records that have both fields populated are counted.
+    """
+    wrong = [
+        r for r in records
+        if not r.get("correct", True)
+        and r.get("predicted_index") is not None
+        and r.get("gold_index") is not None
+    ]
+    n = len(wrong)
+    if n == 0:
+        return {"n_wrong": 0, "n_before": 0, "n_after": 0, "pct_before": 0.0, "pct_after": 0.0}
+    n_before = sum(1 for r in wrong if r["predicted_index"] < r["gold_index"])
+    n_after  = sum(1 for r in wrong if r["predicted_index"] > r["gold_index"])
+    return {
+        "n_wrong":    n,
+        "n_before":   n_before,
+        "n_after":    n_after,
+        "pct_before": pct(n_before, n),
+        "pct_after":  pct(n_after, n),
+    }
+
+
+def selected_before_gold_x_dimension(records: list, dim_key: str) -> dict:
+    """Break selected_before_gold_stats down by a single dimension."""
+    groups: dict = defaultdict(list)
+    for r in records:
+        groups[str(r.get(dim_key, "unknown"))].append(r)
+
+    def _sk(v):
+        try:
+            return (0, float(v))
+        except ValueError:
+            return (1, v)
+
+    return {k: selected_before_gold_stats(v) for k, v in sorted(groups.items(), key=lambda kv: _sk(kv[0]))}
+
+
 def accuracy_x_option_dep_x_n_options(records: list) -> dict:
     """
     For each (option_dep, n_options) cell: accuracy per strategy.
@@ -263,6 +465,90 @@ def strategy_x_model_x_n_options(records: list) -> dict:
     }
 
 
+# -------------------------------------------------------------------------
+# LaTeX table rendering
+# -------------------------------------------------------------------------
+
+def get_strategy_order(records: list) -> list:
+    """Return strategy codes sorted by overall frequency (most common first)."""
+    counts = Counter(r["primary_strategy"] for r in records)
+    return [code for code, _ in counts.most_common()]
+
+
+def render_latex_strategy_table(
+    records: list,
+    mode: str,
+    dep_label: str,
+    strategy_order: list,
+) -> str:
+    """
+    Render one LaTeX table: strategy distribution (%) for a specific
+    (mode, dep_label) slice, grouped by n_options → model → window.
+    """
+    subset = [
+        r for r in records
+        if r.get("mode") == mode and r.get("option_dep") == dep_label
+    ]
+    if not subset:
+        return f"% No data for mode={mode}, dep={dep_label}\n"
+
+    n_strats = len(strategy_order)
+    n_cols   = 1 + n_strats
+    col_spec = "l" + "r" * n_strats
+
+    by_n: dict = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    for r in subset:
+        by_n[int(r["n_options"])][r.get("model_slug", "unknown")][r.get("window")].append(r)
+
+    def _sk(v):
+        try:
+            return (0, float(v))
+        except (TypeError, ValueError):
+            return (1, str(v))
+
+    dep_display  = dep_label.replace("option_", "").upper()
+    mode_display = mode.upper()
+
+    lines = [
+        r"\begin{table}",
+        r"\resizebox{\linewidth}{!}{%",
+        f"\\begin{{tabular}}{{{col_spec}}}",
+        r"\toprule",
+        r"\# Window & " + " & ".join(strategy_order) + r" \\",
+        r"\midrule",
+    ]
+
+    for i, n_opt in enumerate(sorted(by_n)):
+        if i > 0:
+            lines.append(r"\midrule")
+        lines.append(f"\\multicolumn{{{n_cols}}}{{l}}{{\\textbf{{{n_opt} Options}}}} \\\\")
+        lines.append(r"\midrule")
+        for j, model in enumerate(sorted(by_n[n_opt])):
+            if j > 0:
+                lines.append(r"\hdashline")
+            lines.append(f"\\multicolumn{{{n_cols}}}{{l}}{{{model}}} \\\\")
+            for w in sorted(by_n[n_opt][model], key=_sk):
+                recs  = by_n[n_opt][model][w]
+                total = len(recs)
+                cnts  = Counter(r["primary_strategy"] for r in recs)
+                cells = " & ".join(
+                    f"{100 * cnts.get(s, 0) / total:.1f}" if total else "0.0"
+                    for s in strategy_order
+                )
+                lines.append(f"{w if w is not None else '?'} & {cells} \\\\")
+
+    lines += [
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"}",
+        f"\\caption{{Strategy distribution (\\%) by N options and models"
+        f" {mode_display} mode and {dep_display}.}}",
+        f"\\label{{tab:strategy-x-n-options-{mode}-{dep_display.lower()}}}",
+        r"\end{table}",
+    ]
+    return "\n".join(lines)
+
+
 def compute_all_stats(records: list) -> dict:
     return {
         "n": len(records),
@@ -275,8 +561,20 @@ def compute_all_stats(records: list) -> dict:
         "strategy_x_correctness":              strategy_x_correctness(records),
         "strategy_x_option_dep":               strategy_x_option_dep(records),
         "accuracy_x_option_dep_x_n_options":   accuracy_x_option_dep_x_n_options(records),
+        "strategy_x_dep_x_n":                  strategy_x_two_dims(records, "option_dep", "n_options"),
+        "strategy_x_dep_x_window":             strategy_x_two_dims(records, "option_dep", "window"),
+        "strategy_x_dep_x_mode":               strategy_x_two_dims(records, "option_dep", "mode"),
+        "strategy_x_dep_x_n_x_window":         strategy_x_three_dims(records, "option_dep", "n_options", "window"),
+        "strategy_x_dep_x_n_x_window_x_mode":  strategy_x_four_dims(records, "option_dep", "n_options", "window", "mode"),
+        "accuracy_x_dep_x_n_x_window":         accuracy_x_three_dims(records, "option_dep", "n_options", "window"),
         "reasoning_tokens_x_strategy":         reasoning_tokens_x_strategy(records),
         "reasoning_tokens_x_strategy_x_model": reasoning_tokens_x_strategy_x_model(records),
+        "selected_before_gold":                selected_before_gold_stats(records),
+        "selected_before_gold_x_strategy":     selected_before_gold_x_dimension(records, "primary_strategy"),
+        "selected_before_gold_x_window":       selected_before_gold_x_dimension(records, "window"),
+        "selected_before_gold_x_mode":         selected_before_gold_x_dimension(records, "mode"),
+        "selected_before_gold_x_model":        selected_before_gold_x_dimension(records, "model_slug"),
+        "selected_before_gold_x_option_dep":   selected_before_gold_x_dimension(records, "option_dep"),
     }
 
 
@@ -284,7 +582,7 @@ def compute_all_stats(records: list) -> dict:
 # Markdown report
 # -------------------------------------------------------------------------
 
-def render_report(stats: dict, coverage: dict) -> str:
+def render_report(stats: dict, coverage: dict, records: list = None) -> str:
     lines = [
         "# Strategy Classification Report\n",
         "_Auto-generated by analyze_strategies.py_\n",
@@ -398,8 +696,144 @@ def render_report(stats: dict, coverage: dict) -> str:
                 )
                 lines.append(f"| {code} | {cells} |")
             lines.append("")
+
+        # 2-D cross-tabs: strategy × dep × {N, window, mode}
+        def _two_dim_section(title: str, data_key: str, dim2_label: str, dim2_sort_key=None) -> list:
+            data = s.get(data_key, {})
+            if not data:
+                return []
+            out = [f"#### {title}\n"]
+            for dep_lbl in sorted(data):
+                dim2_vals = sorted(data[dep_lbl], key=dim2_sort_key or (lambda x: x))
+                out += [f"**{dep_lbl}** (pct per strategy)\n"]
+                header = f"| {dim2_label} | " + " | ".join(all_codes) + " |"
+                sep    = "|---|" + "---|" * len(all_codes)
+                out   += [header, sep]
+                for d2 in dim2_vals:
+                    cell = data[dep_lbl][d2]
+                    dist = cell["strategy_distribution"]
+                    cells = " | ".join(f"{dist.get(c, {}).get('pct', 0.0):.1f}%" for c in all_codes)
+                    out.append(f"| {d2} | {cells} |")
+                out.append("")
+            return out
+
+        lines += _two_dim_section(
+            "Strategy Distribution × Dep × N Options",
+            "strategy_x_dep_x_n", "N options",
+            dim2_sort_key=lambda x: int(x),
+        )
+        lines += _two_dim_section(
+            "Strategy Distribution × Dep × Window",
+            "strategy_x_dep_x_window", "Window",
+            dim2_sort_key=float,
+        )
+        lines += _two_dim_section(
+            "Strategy Distribution × Dep × Mode",
+            "strategy_x_dep_x_mode", "Mode",
+        )
+
+        # 3-D strategy table: dep × N × window
+        strat3 = s.get("strategy_x_dep_x_n_x_window", {})
+        if strat3:
+            lines += ["#### Strategy Distribution × Dep × N × Window\n"]
+            for dep_lbl in sorted(strat3):
+                n_opts   = sorted(strat3[dep_lbl], key=lambda x: int(x))
+                windows3 = sorted({w for n in strat3[dep_lbl].values() for w in n}, key=float)
+                for n_opt in n_opts:
+                    lines += [f"**{dep_lbl} / N={n_opt}** (pct per strategy)\n"]
+                    header = "| Window | " + " | ".join(all_codes) + " |"
+                    sep    = "|---|" + "---|" * len(all_codes)
+                    lines += [header, sep]
+                    for w in windows3:
+                        cell = strat3[dep_lbl][n_opt].get(w, {})
+                        dist = cell.get("strategy_distribution", {})
+                        cells = " | ".join(f"{dist.get(c, {}).get('pct', 0.0):.1f}%" for c in all_codes)
+                        lines.append(f"| {w} | {cells} |")
+                    lines.append("")
+
+        # 4-D strategy table: too large for inline markdown — stored in JSON only
+        if s.get("strategy_x_dep_x_n_x_window_x_mode"):
+            lines += [
+                "#### Strategy Distribution × Dep × N × Window × Mode\n",
+                "_Full 4-axis table (2 dep × 3 N × 5 window × 2 mode = 60 cells) is in `strategy_stats.json`"
+                " under `strategy_x_dep_x_n_x_window_x_mode`. Use for figure generation._\n",
+            ]
+
+        acc3 = s.get("accuracy_x_dep_x_n_x_window", {})
+        if acc3:
+            lines += ["#### Accuracy × Dep × N × Window (accuracy per strategy — see JSON for full table)\n"]
+            for dep_lbl in sorted(acc3):
+                n_opts   = sorted(acc3[dep_lbl], key=lambda x: int(x))
+                windows3 = sorted({w for n in acc3[dep_lbl].values() for w in n}, key=float)
+                for code in all_codes:
+                    lines += [f"**{dep_lbl} / {code}**\n"]
+                    header = "| N \\ Window | " + " | ".join(windows3) + " |"
+                    sep    = "|---|" + "---|" * len(windows3)
+                    lines += [header, sep]
+                    for n_opt in n_opts:
+                        cells = " | ".join(
+                            f"{acc3[dep_lbl][n_opt].get(w, {}).get(code, None) or '—'}"
+                            if acc3[dep_lbl][n_opt].get(w, {}).get(code) is None
+                            else f"{acc3[dep_lbl][n_opt][w][code]:.1%}"
+                            for w in windows3
+                        )
+                        lines.append(f"| {n_opt} | {cells} |")
+                    lines.append("")
+
     else:
         lines.append("_option_dep field not present — re-run with --dataset-path to backfill._\n")
+
+    # Selected-vs-gold positional bias (wrong predictions only)
+    sbg = s.get("selected_before_gold", {})
+    if sbg and sbg.get("n_wrong", 0) > 0:
+        lines += [
+            "## Selected Option Position Relative to Gold (wrong predictions only)\n",
+            f"Among the **{sbg['n_wrong']}** incorrect predictions:\n",
+            f"- **Before gold**: {sbg['n_before']} ({sbg['pct_before']}%)",
+            f"- **After gold**: {sbg['n_after']} ({sbg['pct_after']}%)\n",
+        ]
+
+        def _sbg_table(data: dict, row_label: str) -> list:
+            def _sk(kv):
+                try:
+                    return (0, float(kv[0]))
+                except ValueError:
+                    return (1, kv[0])
+            rows = sorted(data.items(), key=_sk)
+            out = [
+                f"| {row_label} | N wrong | Before gold | After gold |",
+                "|---|---|---|---|",
+            ]
+            for k, v in rows:
+                if v["n_wrong"] == 0:
+                    out.append(f"| {k} | 0 | — | — |")
+                else:
+                    out.append(
+                        f"| {k} | {v['n_wrong']} "
+                        f"| {v['n_before']} ({v['pct_before']}%) "
+                        f"| {v['n_after']} ({v['pct_after']}%) |"
+                    )
+            return out
+
+        sbg_strategy = s.get("selected_before_gold_x_strategy", {})
+        if sbg_strategy:
+            lines += ["### By Strategy\n"] + _sbg_table(sbg_strategy, "Strategy") + [""]
+
+        sbg_window = s.get("selected_before_gold_x_window", {})
+        if sbg_window:
+            lines += ["### By Window Position\n"] + _sbg_table(sbg_window, "Window") + [""]
+
+        sbg_mode = s.get("selected_before_gold_x_mode", {})
+        if sbg_mode:
+            lines += ["### By Mode\n"] + _sbg_table(sbg_mode, "Mode") + [""]
+
+        sbg_model = s.get("selected_before_gold_x_model", {})
+        if sbg_model:
+            lines += ["### By Model\n"] + _sbg_table(sbg_model, "Model") + [""]
+
+        sbg_dep = s.get("selected_before_gold_x_option_dep", {})
+        if sbg_dep:
+            lines += ["### By Option Dependency\n"] + _sbg_table(sbg_dep, "Option dep") + [""]
 
     # Reasoning tokens per strategy
     tok_data = s.get("reasoning_tokens_x_strategy", {})
@@ -459,6 +893,21 @@ def render_report(stats: dict, coverage: dict) -> str:
             lines.append(f"| {n_opt} | {cells} |")
         lines.append("")
 
+    # LaTeX strategy tables (4 combinations: block/sparse × dep/indep)
+    if records:
+        strategy_order = get_strategy_order(records)
+        lines += ["\n## LaTeX Strategy Tables\n"]
+        for mode in ("block", "sparse"):
+            for dep_label in ("option_independent", "option_dependent"):
+                dep_display  = dep_label.replace("option_", "").title()
+                mode_display = mode.title()
+                lines += [
+                    f"\n### {mode_display} Mode × {dep_display}\n",
+                    "```latex",
+                    render_latex_strategy_table(records, mode, dep_label, strategy_order),
+                    "```\n",
+                ]
+
     return "\n".join(lines)
 
 
@@ -497,6 +946,20 @@ def main(args):
     records = [r for r in all_records if r["confidence"] in ("high", "medium")]
     print(f"Analysis set (high+medium): {len(records)}")
 
+    # Normalize primary_strategy to bare code (e.g. "S1 — foo" → "S1", "s2" → "S2")
+    _code_re = re.compile(r"^[Ss](\d+)")
+    n_normalized = 0
+    for r in records:
+        raw = r["primary_strategy"]
+        m = _code_re.match(raw.strip())
+        if m:
+            normalized = f"S{m.group(1)}"
+            if normalized != raw:
+                r["primary_strategy"] = normalized
+                n_normalized += 1
+    if n_normalized:
+        print(f"Normalized {n_normalized} strategy labels to bare code (e.g. 'S1 — ...' → 'S1')")
+
     # Backfill reasoning tokens from raw_completions if completions-dir provided
     if args.completions_dir:
         print(f"Building token lookup from: {args.completions_dir}")
@@ -520,9 +983,20 @@ def main(args):
     with open(stats_path, "w") as f:
         json.dump(stats, f, indent=2)
 
-    md = render_report(stats, coverage)
+    md = render_report(stats, coverage, records)
     with open(report_path, "w") as f:
         f.write(md)
+
+    # Save one .tex file per (mode × dep_label) combination
+    strategy_order = get_strategy_order(records)
+    for mode in ("block", "sparse"):
+        for dep_label in ("option_independent", "option_dependent"):
+            dep_display = dep_label.replace("option_", "")
+            tex_path = out_dir / f"strategy_table_{mode}_{dep_display}.tex"
+            tex = render_latex_strategy_table(records, mode, dep_label, strategy_order)
+            with open(tex_path, "w") as f:
+                f.write(tex + "\n")
+            print(f"LaTeX  → {tex_path}")
 
     print(f"\nStats  → {stats_path}")
     print(f"Report → {report_path}")
