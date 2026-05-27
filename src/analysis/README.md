@@ -162,6 +162,17 @@ python src/analysis/tables/latex_strategy_tables.py
 
 Run these scripts in order to build the frozen taxonomy and classify all reasoning traces.
 
+The frozen taxonomy comprises four dominant strategies (plus Other):
+
+| Code | Name | Description |
+|---|---|---|
+| **S1** | Independent Derivation then Scan | Derives answer from knowledge first, then confirms against the list |
+| **S2** | Sequential Review | Linear option-by-option evaluation |
+| **S3** | Eliminative Filtering | Discards implausible candidates progressively |
+| **S4** | Candidate-Led Shortlisting | Generates internal hypotheses, matches against list |
+| **S8** | Block/Cluster Detection | Identifies the contiguous block of original options and exploits local structure to narrow the search (prominent in Block mode) |
+| **Other** | — | Rare or mixed behaviors |
+
 ### Step 1 — `pilot_taxonomy_judge.py`
 Open-codes a stratified sample of gpt-oss-120b chain-of-thought traces (reads `reasoning` field
 from `raw_completions.jsonl`). Submits a batch job; results feed `synthesize_taxonomy.py`.
