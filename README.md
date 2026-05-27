@@ -37,6 +37,11 @@ Each question is augmented to N options (N ∈ {100, 500, 1000}) across **30 var
 preprocess/          ← dataset construction + distractor QC pipeline (see preprocess/README.md)
   analysis/          ← sanity checks, stats, exploration
 src/                 ← experiment code (inference + evaluation)
+  analysis/          ← post-processing: figures, tables, strategy taxonomy (see src/analysis/README.md)
+    core/            ← data aggregation & statistics
+    plots/           ← paper figures (PDF)
+    tables/          ← LaTeX tables
+    taxonomy/        ← reasoning-strategy taxonomy pipeline
   utils/             ← result summarization helpers
 scripts/             ← shell helpers for batch jobs
 notes/               ← research notes and design documents
@@ -102,6 +107,18 @@ python src/retrieve_inference.py \
 ```
 
 Inference reads from `data/bench/mmlu-pro-augmented-clean-{N}/` (the quality-controlled dataset).
+
+## Phase 3 — Analysis & Figures (`src/analysis/`)
+
+After inference, use the scripts in `src/analysis/` to produce all paper figures and tables.
+See [`src/analysis/README.md`](src/analysis/README.md) for the full list with usage examples.
+
+Typical order:
+1. `core/analyze_reasoning.py` — aggregate token usage → `reasoning_records.jsonl`
+2. `taxonomy/` pipeline — open-code traces → classify → `classified_traces.jsonl`
+3. `core/analyze_strategies.py` — build `strategy_stats.json`
+4. `plots/` scripts — produce PDFs
+5. `tables/` scripts — produce LaTeX
 
 ## Experimental Conditions
 
