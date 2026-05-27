@@ -1,6 +1,14 @@
 # Lost in Choice: Evaluating LLMs Under Extreme Multiple-Choice Scaling
 
+
 Research project providing the first systematic investigation of LLM selection dynamics under extreme candidate cardinality. We stress-test six reasoning models by scaling the candidate space up to 1,000 options while manipulating their layout within the context window, and we audit Chain-of-Thought traces to characterize the behavioral heuristics models adopt as the candidate space expands.
+
+
+<p align="center">
+  <img src=".github/images/abstract_figure.jpg" width="65%"><br>
+  <em>Overall accuracy vs. gold answer position (window) for N ∈ {100, 500, 1000}. Dashed line = 10-option baseline.</em>
+</p>
+
 
 ## The Lost-in-Choice Phenomenon
 
@@ -11,10 +19,6 @@ Standard multiple-choice benchmarks (MMLU-Pro: 10 options) make it hard to disen
 
 We find a systematic, layout-driven degradation of global comparative reasoning: models that perform near ceiling on 10 options can collapse to near-random at 1,000 — a failure mode we define as the *Lost-in-Choice* phenomenon.
 
-<p align="center">
-  <img src=".github/images/abstract_figure.jpg" width="65%"><br>
-  <em>Overall accuracy vs. gold answer position (window) for N ∈ {100, 500, 1000}. Dashed line = 10-option baseline.</em>
-</p>
 
 ## Benchmark: MMLU-1K
 
