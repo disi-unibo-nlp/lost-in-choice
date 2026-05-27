@@ -1,7 +1,5 @@
 # Lost in Choice: Evaluating LLMs Under Extreme Multiple-Choice Scaling
 
-> Anonymous ACL submission
-
 Research project providing the first systematic investigation of LLM selection dynamics under extreme candidate cardinality. We stress-test six reasoning models by scaling the candidate space up to 1,000 options while manipulating their layout within the context window, and we audit Chain-of-Thought traces to characterize the behavioral heuristics models adopt as the candidate space expands.
 
 ## The Lost-in-Choice Phenomenon
@@ -17,11 +15,11 @@ We find a systematic, layout-driven degradation of global comparative reasoning:
 
 A diagnostic benchmark of **1,000 questions** from MMLU-Pro (CS, Health, Law, Math — 250 each), expanded to **31,000 unique test instances** by varying three independent axes:
 
-| Axis | Values |
-|---|---|
-| **Cardinality** (N) | 100, 500, 1000 (+ 10-option baseline) |
-| **Spatial layout** | Block (original 10 options contiguous) · Sparse (spread one-per-segment) |
-| **Target position** (w) | 0.0, 0.25, 0.50, 0.75, 1.0 |
+| Axis                    | Values                                                                   |
+| ----------------------- | ------------------------------------------------------------------------ |
+| **Cardinality** (N)     | 100, 500, 1000 (+ 10-option baseline)                                    |
+| **Spatial layout**      | Block (original 10 options contiguous) · Sparse (spread one-per-segment) |
+| **Target position** (w) | 0.0, 0.25, 0.50, 0.75, 1.0                                               |
 
 3 cardinalities × 2 layouts × 5 positions = **30 variants per question**, plus the 10-option baseline.
 
@@ -32,13 +30,13 @@ We formalize a key distinction to decouple knowledge retrieval from option-compa
 - **Option-Independent**: Answer derivable from internal knowledge prior to inspecting candidates (e.g., "What is the capital of Italy?"). 540 questions.
 - **Option-Dependent**: Correct choice emerges only through comparative analysis of the available alternatives (e.g., "Which of the following is most efficient?"). 460 questions.
 
-| Domain | Opt-Indep | Opt-Dep | Total |
-|---|:---:|:---:|:---:|
-| Computer Science | 204 | 46 | 250 |
-| Health | 107 | 143 | 250 |
-| Law | 57 | 193 | 250 |
-| Mathematics | 172 | 78 | 250 |
-| **Total** | **540** | **460** | **1,000** |
+| Domain           | Opt-Indep | Opt-Dep |   Total   |
+| ---------------- | :-------: | :-----: | :-------: |
+| Computer Science |    204    |   46    |    250    |
+| Health           |    107    |   143   |    250    |
+| Law              |    57     |   193   |    250    |
+| Mathematics      |    172    |   78    |    250    |
+| **Total**        |  **540**  | **460** | **1,000** |
 
 ### Distractor quality control
 
@@ -48,14 +46,14 @@ Distractors are sampled in-domain (same MMLU-Pro category) to avoid semantic har
 
 Six reasoning models (all emit CoT traces in `<think>…</think>`):
 
-| Model | Access | Notes |
-|---|---|---|
-| Qwen3.5-27B | Local (vLLM) | FP8; `max_tokens=32000` |
-| Qwen3.5-9B | Together AI | FP8; `max_tokens=32000` |
-| Gemini-3-Flash | Vertex AI Batch API | `thinkingLevel=high` |
-| Gemma-4-31B | Together AI | FP8; `max_tokens=32000` |
-| GPT-OSS-120B | Together AI | `reasoning_effort=medium` |
-| GPT-OSS-20B | Together AI | `reasoning_effort=medium` |
+| Model          | Access              | Notes                     |
+| -------------- | ------------------- | ------------------------- |
+| Qwen3.5-27B    | Local (vLLM)        | FP8; `max_tokens=32000`   |
+| Qwen3.5-9B     | Together AI         | FP8; `max_tokens=32000`   |
+| Gemini-3-Flash | Vertex AI Batch API | `thinkingLevel=high`      |
+| Gemma-4-31B    | Together AI         | FP8; `max_tokens=32000`   |
+| GPT-OSS-120B   | Together AI         | `reasoning_effort=medium` |
+| GPT-OSS-20B    | Together AI         | `reasoning_effort=medium` |
 
 All responses use structured JSON output (`{"answer_index": <int>}`) to eliminate parsing noise.
 
@@ -79,14 +77,14 @@ All responses use structured JSON output (`{"answer_index": <int>}`) to eliminat
 
 Derived from a CoT audit of ~stratified sample of traces, classified by an LLM-based classifier:
 
-| Code | Name | Description |
-|---|---|---|
-| **S1** | Independent Derivation then Scan | Derives answer from knowledge, then confirms against the list |
-| **S2** | Sequential Review | Linear option-by-option evaluation |
-| **S3** | Eliminative Filtering | Discards implausible candidates progressively |
-| **S4** | Candidate-Led Shortlisting | Generates internal hypotheses, matches against list |
-| **S8** | Block/Cluster Detection | Identifies the contiguous block of original options and exploits local structure to narrow the search (prominent in Block mode) |
-| **Other** | — | Rare or mixed behaviors |
+| Code      | Name                             | Description                                                                                                                     |
+| --------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **S1**    | Independent Derivation then Scan | Derives answer from knowledge, then confirms against the list                                                                   |
+| **S2**    | Sequential Review                | Linear option-by-option evaluation                                                                                              |
+| **S3**    | Eliminative Filtering            | Discards implausible candidates progressively                                                                                   |
+| **S4**    | Candidate-Led Shortlisting       | Generates internal hypotheses, matches against list                                                                             |
+| **S8**    | Block/Cluster Detection          | Identifies the contiguous block of original options and exploits local structure to narrow the search (prominent in Block mode) |
+| **Other** | —                                | Rare or mixed behaviors                                                                                                         |
 
 ---
 
@@ -133,14 +131,14 @@ The full pipeline runs in three phases. See [`preprocess/README.md`](preprocess/
 
 ### Phase 1 — Build MMLU-1K (`preprocess/`)
 
-| Step | Script | Output |
-|------|--------|--------|
-| 1 | `sample_mmlu.py` | `mmlu_pro_downsampled_2858/` |
-| 2 | `categorize_mmlu.py` | batch job per judge model |
-| 3 | `retrieve_categorize_mmlu.py` | `mmlu_pro_downsampled_2858_categorized/<model>/` |
-| 4 | `combine_predictions.py` | `mmlu_pro_downsampled_2858_categorized_combined/` — majority vote labels |
-| 5 | `sample_final_dataset.py` | `data/bench/mmlu-pro-augmented-10/` — the 1,000-question core |
-| 6 | `augment_final_dataset_v4.py` | `data/bench/mmlu-pro-augmented-{100,500,1000}/` — 30 variants each |
+| Step | Script                        | Output                                                                   |
+| ---- | ----------------------------- | ------------------------------------------------------------------------ |
+| 1    | `sample_mmlu.py`              | `mmlu_pro_downsampled_2858/`                                             |
+| 2    | `categorize_mmlu.py`          | batch job per judge model                                                |
+| 3    | `retrieve_categorize_mmlu.py` | `mmlu_pro_downsampled_2858_categorized/<model>/`                         |
+| 4    | `combine_predictions.py`      | `mmlu_pro_downsampled_2858_categorized_combined/` — majority vote labels |
+| 5    | `sample_final_dataset.py`     | `data/bench/mmlu-pro-augmented-10/` — the 1,000-question core            |
+| 6    | `augment_final_dataset_v4.py` | `data/bench/mmlu-pro-augmented-{100,500,1000}/` — 30 variants each       |
 
 Steps 2–3 are repeated for each of the three judge models (GPT-OSS-120B, Gemma-4-31B, Qwen3.5-9B). Final labels are assigned by majority vote.
 
@@ -148,13 +146,13 @@ Steps 2–3 are repeated for each of the three judge models (GPT-OSS-120B, Gemma
 
 Screens all 990,000 question-distractor pairs for coincidental correctness and applies replacements before inference.
 
-| Step | Script | Output |
-|------|--------|--------|
-| 7 | `check_distractors.py` / `check_distractor_gemini.py` | batch job per domain |
-| 8 | `retrieve_distractor_check.py` / `retrieve_distractor_check_gemini.py` | `out/distractor_check/<model>/<domain>/<timestamp>/flagged_distractors.jsonl` |
-| 9 | `merge_distractor_corrections.py` | updated `flagged_distractors.jsonl` (parse-failure fixes merged) |
-| 10 | `merge_judge_outputs.py` | `out/distractor_check/merged/block/flagged_distractors.jsonl` |
-| 11 | `apply_distractor_fixes.py` | `data/bench/mmlu-pro-augmented-clean-{100,500,1000}/` |
+| Step | Script                                                                 | Output                                                                        |
+| ---- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| 7    | `check_distractors.py` / `check_distractor_gemini.py`                  | batch job per domain                                                          |
+| 8    | `retrieve_distractor_check.py` / `retrieve_distractor_check_gemini.py` | `out/distractor_check/<model>/<domain>/<timestamp>/flagged_distractors.jsonl` |
+| 9    | `merge_distractor_corrections.py`                                      | updated `flagged_distractors.jsonl` (parse-failure fixes merged)              |
+| 10   | `merge_judge_outputs.py`                                               | `out/distractor_check/merged/block/flagged_distractors.jsonl`                 |
+| 11   | `apply_distractor_fixes.py`                                            | `data/bench/mmlu-pro-augmented-clean-{100,500,1000}/`                         |
 
 GPT-OSS-120B judges CS, Law, and Health; Gemini-3-Flash judges Mathematics. 51.5% of questions have ≥ 1 flagged distractor (2,649 replacements total). False-negative rate < 4.5% (human audit on 200 samples, Cohen's κ = 0.82).
 
@@ -187,11 +185,11 @@ Typical order:
 
 ## Experimental Conditions
 
-| Comparison | What it reveals |
-|---|---|
-| Accuracy vs. window position (same mode) | Primacy / recency bias |
-| Block vs. Sparse at the same window | Effect of local option clustering |
-| Option-Dependent vs. Option-Independent | Whether answer derivability interacts with positional bias |
-| Per-domain breakdown across windows | Domain-specific sensitivity to option position |
-| N = 100 vs. 500 vs. 1000 | How bias scales with option list length |
-| R3 across models | Global resilience ranking |
+| Comparison                               | What it reveals                                            |
+| ---------------------------------------- | ---------------------------------------------------------- |
+| Accuracy vs. window position (same mode) | Primacy / recency bias                                     |
+| Block vs. Sparse at the same window      | Effect of local option clustering                          |
+| Option-Dependent vs. Option-Independent  | Whether answer derivability interacts with positional bias |
+| Per-domain breakdown across windows      | Domain-specific sensitivity to option position             |
+| N = 100 vs. 500 vs. 1000                 | How bias scales with option list length                    |
+| R3 across models                         | Global resilience ranking                                  |
