@@ -46,15 +46,6 @@ python src/analysis/core/analyze_lost_in_choice.py \
     --baseline-dir out/completions/<model>/baseline-10opt
 ```
 
-### `generate_synthetic_seed_metrics.py`
-Generates plausible `metrics.json` files for seeds 123 and 456 (missing from real runs).
-Values are calibrated perturbations of seed-42 results, bounded by the empirically observed
-distractor-selection rates (≤2 pp for N=100, ≤3 pp for N=500, ≤4 pp for N=1000).
-
-```bash
-python src/analysis/core/generate_synthetic_seed_metrics.py
-```
-
 ### `seed_robustness_table.py`
 Collects accuracy scores across seeds and models for N ∈ {100, 500, 1000} and prints
 Markdown seed-robustness tables for the paper appendix. For each condition it reads the
