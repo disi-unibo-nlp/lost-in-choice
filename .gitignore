@@ -26,6 +26,7 @@ logs/
 old_scripts/
 notes/
 *.txt
+!requirements.txt
 test_vertex_ai.py
 test_vertex_ai_batch.py
 paper/

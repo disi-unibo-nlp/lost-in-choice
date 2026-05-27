@@ -111,7 +111,12 @@ out/                 ← batch job outputs (gitignored)
 ## Setup
 
 ```bash
-pip install datasets together python-dotenv google-genai
+pip install -r requirements.txt
+```
+
+For local inference with Qwen3.5-27B (requires CUDA):
+```bash
+pip install vllm==0.19.0
 ```
 
 Create a `.env` file:

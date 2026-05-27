@@ -1,0 +1,23 @@
+# Dataset loading
+datasets
+
+# Inference APIs
+together
+google-genai
+
+# Vertex AI batch (GCS access)
+fsspec
+gcsfs
+
+# Analysis & plotting
+numpy
+pandas
+matplotlib
+pydantic
+
+# Environment
+python-dotenv
+
+# Local inference (Qwen3.5-27B via vLLM)
+# Install separately — requires CUDA; not needed for API-based inference
+# vllm==0.19.0
