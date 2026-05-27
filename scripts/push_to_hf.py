@@ -57,7 +57,16 @@ KEEP = {
     "n_options",             # 100 | 500 | 1000
 }
 
-DATASET_CARD = """\
+def _build_card_yaml():
+    splits = ["w0", "w25", "w50", "w75", "w100"]
+    configs_yaml = ""
+    for n in [100, 500, 1000]:
+        for mode in ["block", "sparse"]:
+            cfg = f"n{n}_{mode}"
+            configs_yaml += f"- config_name: {cfg}\n  data_files:\n"
+            for s in splits:
+                configs_yaml += f"  - split: {s}\n    path: {cfg}/{s}-*.parquet\n"
+    return f"""\
 ---
 language:
 - en
@@ -75,19 +84,10 @@ pretty_name: MMLU-1K
 size_categories:
 - 10K<n<100K
 configs:
-- config_name: n100_block
-  description: "100 options, block layout (original 10 options contiguous)"
-- config_name: n100_sparse
-  description: "100 options, sparse layout (original 10 options spread one-per-segment)"
-- config_name: n500_block
-  description: "500 options, block layout"
-- config_name: n500_sparse
-  description: "500 options, sparse layout"
-- config_name: n1000_block
-  description: "1000 options, block layout"
-- config_name: n1000_sparse
-  description: "1000 options, sparse layout"
----
+{configs_yaml}---"""
+
+
+DATASET_CARD = _build_card_yaml() + """\
 
 # MMLU-1K
 
@@ -201,8 +201,26 @@ def clean(dataset):
     return dataset
 
 
-def main(dry_run: bool):
+def upload_card(token):
+    print("Uploading dataset card (README.md)...")
+    api = HfApi()
+    api.upload_file(
+        path_or_fileobj=DATASET_CARD.encode(),
+        path_in_repo="README.md",
+        repo_id=HF_REPO,
+        repo_type="dataset",
+        token=token,
+        commit_message="Update dataset card",
+    )
+    print("  ✓ dataset card pushed")
+
+
+def main(dry_run: bool, readme_only: bool):
     token = os.environ.get("HF_TOKEN")
+
+    if readme_only:
+        upload_card(token)
+        return
 
     for n in N_OPTIONS:
         for mode in MODES:
@@ -230,17 +248,7 @@ def main(dry_run: bool):
                 print(f"  ✓ pushed")
 
     if not dry_run:
-        print("\nUploading dataset card (README.md)...")
-        api = HfApi()
-        api.upload_file(
-            path_or_fileobj=DATASET_CARD.encode(),
-            path_in_repo="README.md",
-            repo_id=HF_REPO,
-            repo_type="dataset",
-            token=token,
-            commit_message="Upload dataset card",
-        )
-        print(f"  ✓ dataset card pushed")
+        upload_card(token)
         print(f"\nDone. https://huggingface.co/datasets/{HF_REPO}")
     else:
         print("\nDry run complete — nothing uploaded.")
@@ -249,5 +257,6 @@ def main(dry_run: bool):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--readme-only", action="store_true", help="Re-upload dataset card only")
     args = parser.parse_args()
-    main(dry_run=args.dry_run)
+    main(dry_run=args.dry_run, readme_only=args.readme_only)
