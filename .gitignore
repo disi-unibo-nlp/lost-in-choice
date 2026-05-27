@@ -26,6 +26,8 @@ logs/
 old_scripts/
 notes/
 *.txt
+test_vertex_ai.py
+test_vertex_ai_batch.py
 
 # Claude Code
 .claude/
