@@ -11,7 +11,8 @@ Standard multiple-choice benchmarks (MMLU-Pro: 10 options) make it hard to disen
 
 We find a systematic, layout-driven degradation of global comparative reasoning: models that perform near ceiling on 10 options can collapse to near-random at 1,000 — a failure mode we define as the *Lost-in-Choice* phenomenon.
 
-![Lost-in-Choice phenomenon](.github/images/abstract_figure.jpg)
+<img src=".github/images/abstract_figure.jpg" width="50%">
+
 *Overall accuracy vs. gold answer position (window) for N ∈ {100, 500, 1000}. Dashed line = 10-option baseline.*
 
 ## Benchmark: MMLU-1K
