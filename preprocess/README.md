@@ -40,7 +40,7 @@ sample_final_dataset.py
 data/bench/mmlu-pro-augmented-10/       ← 1000-question benchmark, 10 options each
         │
         ▼
-augment_final_dataset_v4.py
+augment_final_dataset.py
         │  5 windows × 2 modes × 3 seeds = 30 variants, N ∈ {100, 500, 1000}
         ▼
 data/bench/mmlu-pro-augmented-{100,500,1000}/
@@ -187,12 +187,12 @@ python preprocess/sample_final_dataset.py \
 
 ## Step 6 — Augment to N Options
 
-**Script**: `augment_final_dataset_v4.py`
+**Script**: `augment_final_dataset.py`
 
 Expands each question from 10 to N options across 30 variants (5 windows × 2 modes × 3 seeds) for each pool size N ∈ {100, 500, 1000}. Smaller pools are strict prefixes of larger ones (distractors(100) ⊆ distractors(500) ⊆ distractors(1000)).
 
 ```bash
-python preprocess/augment_final_dataset_v4.py \
+python preprocess/augment_final_dataset.py \
   --dataset-path data/bench/mmlu-pro-augmented-10 \
   --source-dataset-path mmlu_pro_downsampled_2858 \
   --n-options 100 500 1000 \

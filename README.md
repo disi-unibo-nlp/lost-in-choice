@@ -11,6 +11,9 @@ Standard multiple-choice benchmarks (MMLU-Pro: 10 options) make it hard to disen
 
 We find a systematic, layout-driven degradation of global comparative reasoning: models that perform near ceiling on 10 options can collapse to near-random at 1,000 — a failure mode we define as the *Lost-in-Choice* phenomenon.
 
+![Lost-in-Choice phenomenon](.github/images/abstract_figure.png)
+*Overall accuracy vs. gold answer position (window) for N ∈ {100, 500, 1000}. Dashed line = 10-option baseline.*
+
 ## Benchmark: MMLU-1K
 
 A diagnostic benchmark of **1,000 questions** from MMLU-Pro (CS, Health, Law, Math — 250 each), expanded to **31,000 unique test instances** by varying three independent axes:
@@ -138,7 +141,7 @@ The full pipeline runs in three phases. See [`preprocess/README.md`](preprocess/
 | 3    | `retrieve_categorize_mmlu.py` | `mmlu_pro_downsampled_2858_categorized/<model>/`                         |
 | 4    | `combine_predictions.py`      | `mmlu_pro_downsampled_2858_categorized_combined/` — majority vote labels |
 | 5    | `sample_final_dataset.py`     | `data/bench/mmlu-pro-augmented-10/` — the 1,000-question core            |
-| 6    | `augment_final_dataset_v4.py` | `data/bench/mmlu-pro-augmented-{100,500,1000}/` — 30 variants each       |
+| 6    | `augment_final_dataset.py`    | `data/bench/mmlu-pro-augmented-{100,500,1000}/` — 30 variants each       |
 
 Steps 2–3 are repeated for each of the three judge models (GPT-OSS-120B, Gemma-4-31B, Qwen3.5-9B). Final labels are assigned by majority vote.
 
