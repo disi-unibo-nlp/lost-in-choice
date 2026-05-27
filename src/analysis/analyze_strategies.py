@@ -893,20 +893,7 @@ def render_report(stats: dict, coverage: dict, records: list = None) -> str:
             lines.append(f"| {n_opt} | {cells} |")
         lines.append("")
 
-    # LaTeX strategy tables (4 combinations: block/sparse × dep/indep)
-    if records:
-        strategy_order = get_strategy_order(records)
-        lines += ["\n## LaTeX Strategy Tables\n"]
-        for mode in ("block", "sparse"):
-            for dep_label in ("option_independent", "option_dependent"):
-                dep_display  = dep_label.replace("option_", "").title()
-                mode_display = mode.title()
-                lines += [
-                    f"\n### {mode_display} Mode × {dep_display}\n",
-                    "```latex",
-                    render_latex_strategy_table(records, mode, dep_label, strategy_order),
-                    "```\n",
-                ]
+    lines += ["_LaTeX strategy tables are saved as standalone .tex files in the same directory._\n"]
 
     return "\n".join(lines)
 
