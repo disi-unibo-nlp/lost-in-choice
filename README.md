@@ -126,6 +126,7 @@ Create a `.env` file:
 ```
 TOGETHER_API_KEY=...
 GOOGLE_API_KEY=...
+HF_TOKEN=...          # needed only for push_to_hf.py
 ```
 
 ---
