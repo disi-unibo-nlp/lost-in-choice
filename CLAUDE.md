@@ -13,6 +13,8 @@ preprocess/          ← dataset construction pipeline
   analysis/          ← sanity checks, stats, exploration
 src/                 ← experiment code (inference + evaluation)
   utils/             ← result summarization helpers
+notebooks/           ← interactive analysis notebooks
+  calculate_R3.ipynb ← R3 (Reasoning Retention Rating) metric computation
 scripts/             ← shell helpers for batch jobs
 data/                ← datasets (gitignored, populated by pipeline)
 logs/                ← script output logs (gitignored)

@@ -109,6 +109,8 @@ src/                 ← experiment code (inference + evaluation)
     tables/          ← LaTeX tables
     taxonomy/        ← reasoning-strategy taxonomy pipeline
   utils/             ← result summarization helpers
+notebooks/           ← interactive analysis notebooks
+  calculate_R3.ipynb ← R3 (Reasoning Retention Rating) metric computation
 scripts/             ← shell helpers for batch jobs
 notes/               ← research notes and design documents
 data/                ← datasets (gitignored, populated by pipeline)
