@@ -70,30 +70,9 @@ All responses use structured JSON output (`{"answer_index": <int>}`) to eliminat
 
 **Accuracy (Acc)** — frequency of selecting the correct gold label out of N candidates.
 
-**Reasoning Retention Rating (R3)** — aggregate resilience index synthesizing performance across all scaled cardinalities, layouts, and target positions relative to the 10-option baseline. R3 = 80% means the model retains 80% of its native capacity under severe structural manipulation. Computed via a two-level dynamic weighting scheme (within-window resilience × cross-window loss projection; see Appendix E).
+**Reasoning Retention Rating (R3)** — aggregate resilience index synthesizing performance across all scaled cardinalities, layouts, and target positions relative to the 10-option baseline. R3 = 80% means the model retains 80% of its native capacity under severe structural manipulation. Computed via a two-level dynamic weighting scheme (within-window resilience × cross-window loss projection).
 
 **Error breakdown** — wrong predictions split into *Wrong Original* (one of the 9 native distractors) and *Random Distractor* (an injected filler), used to measure semantic anchoring vs. noise susceptibility.
-
-## Key Findings
-
-- Accuracy degrades universally as N scales; degradation is steeper on Option-Dependent tasks and in Sparse mode.
-- Positional bias is pronounced: the gold answer placed at the very end of the context (w=1.0) suffers the steepest drop. Performance curves are not U-shaped — there is no recovery at the tail.
-- Model hierarchy by R3: **Gemini-3-Flash > Qwen3.5-27B > Gemma-4-31B > Qwen3.5-9B > GPT-OSS-120B > GPT-OSS-20B**.
-- Two architectural archetypes: *Heavy Reasoners* (Qwen3.5, Gemini-3-Flash; 6K–10K tokens) mitigate scaling drops; *Light Reasoners* (GPT-OSS, Gemma-4-31B; < 3K tokens) collapse under high context density.
-- Strategy selection is driven by task dependency, not model scale: Option-Independent tasks are dominated by S1 (78–91%); Option-Dependent tasks redistribute mass to interactive strategies S2–S4 (8–35%).
-
-### Reasoning strategy taxonomy
-
-Derived from a CoT audit of ~stratified sample of traces, classified by an LLM-based classifier:
-
-| Code      | Name                             | Description                                                                                                                     |
-| --------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| **S1**    | Independent Derivation then Scan | Derives answer from knowledge, then confirms against the list                                                                   |
-| **S2**    | Sequential Review                | Linear option-by-option evaluation                                                                                              |
-| **S3**    | Eliminative Filtering            | Discards implausible candidates progressively                                                                                   |
-| **S4**    | Candidate-Led Shortlisting       | Generates internal hypotheses, matches against list                                                                             |
-| **S8**    | Block/Cluster Detection          | Identifies the contiguous block of original options and exploits local structure to narrow the search (prominent in Block mode) |
-| **Other** | —                                | Rare or mixed behaviors                                                                                                         |
 
 ---
 
