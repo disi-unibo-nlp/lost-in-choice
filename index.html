@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Lost in Choice: a controlled study of LLMs under extreme multiple-choice scaling.">
+  <meta name="keywords" content="LLM evaluation, multiple choice, long context, positional bias, MMLU-1K, ToolBench">
+  <meta name="theme-color" content="#081a24">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Lost in Choice — Evaluating LLMs Under Extreme Multiple-Choice Scaling">
+  <meta property="og:description" content="What happens when a model must choose among 1,000 candidates? A four-axis decomposition across six reasoning LLMs.">
+  <meta property="og:image" content="assets/img/lost-in-choice-overview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <title>Lost in Choice — EMNLP 2026</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/site.css">
+  <script type="module" src="assets/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <nav class="nav shell" aria-label="Primary navigation">
+      <a class="brand" href="#top" aria-label="Lost in Choice home">
+        <span class="brand-mark" aria-hidden="true">LiC</span>
+        <span>Lost in Choice</span>
+      </a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">
+        <span class="sr-only">Toggle navigation</span>
+        <span></span><span></span><span></span>
+      </button>
+      <div class="nav-links" id="nav-links">
+        <a href="#idea">Core idea</a>
+        <a href="#benchmark">Benchmark</a>
+        <a href="#results">Results</a>
+        <a href="#toolbench">ToolBench</a>
+        <a href="#citation">Citation</a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <div class="hero-grid shell">
+        <div class="hero-copy reveal">
+          <div class="venue"><span></span> EMNLP 2026 · Findings</div>
+          <h1><em>Lost in Choice:</em><br>Evaluating LLMs Under Extreme Multiple-Choice Scaling</h1>
+          <p class="lede">Large context windows can hold thousands of alternatives. That does not mean models can reliably compare them.</p>
+
+          <div class="authors" aria-label="Authors">
+            <a href="https://disi-unibo-nlp.github.io/people/" target="_blank" rel="noreferrer">Alessio Cocchieri</a>
+            <a href="https://disi-unibo-nlp.github.io/people/" target="_blank" rel="noreferrer">Luca Ragazzi</a>
+            <a href="https://disi-unibo-nlp.github.io/people/" target="_blank" rel="noreferrer">Giuseppe Tagliavini</a>
+            <a href="https://disi-unibo-nlp.github.io/people/" target="_blank" rel="noreferrer">Gianluca Moro</a>
+          </div>
+          <p class="affiliation">University of Bologna, Italy</p>
+
+          <div class="actions">
+            <!-- Replace this disabled state with the ACL Anthology or arXiv link once available. -->
+            <span class="button primary disabled" aria-disabled="true">Paper coming soon <span aria-hidden="true">⌛</span></span>
+            <!-- Update this URL if the final repository slug differs. -->
+            <a class="button secondary" href="https://github.com/disi-unibo-nlp/lost-in-choice" target="_blank" rel="noreferrer">View code <span aria-hidden="true">↗</span></a>
+            <a class="button secondary" href="#citation">BibTeX <span aria-hidden="true">↓</span></a>
+          </div>
+          <p class="availability"><span aria-hidden="true">✓</span> Code and analysis notebooks are public; MMLU-1K will be released with the paper.</p>
+        </div>
+
+        <div class="choice-stage reveal" aria-label="Animated representation of a large candidate list">
+          <div class="stage-head">
+            <span>Multiple-choice task</span>
+            <span class="live-dot">N = 1,000</span>
+          </div>
+          <div class="task-prompt">
+            <span>Option-Independent example</span>
+            <p>Which city is the capital of Italy?</p>
+          </div>
+          <div class="option-stream" aria-hidden="true">
+            <div class="option-row"><span>001</span><i></i><b>Tirana</b></div>
+            <div class="option-row"><span>002</span><i></i><b>Lisbon</b></div>
+            <div class="option-row muted"><span>···</span><i></i><b>···</b></div>
+            <div class="option-row"><span>749</span><i></i><b>Vienna</b></div>
+            <div class="option-row gold"><span>750</span><i></i><b>Rome</b><strong>gold</strong></div>
+            <div class="option-row"><span>751</span><i></i><b>Madrid</b></div>
+            <div class="option-row muted"><span>···</span><i></i><b>···</b></div>
+            <div class="option-row"><span>999</span><i></i><b>Sofia</b></div>
+          </div>
+          <p>Accuracy reaches its minimum at late-middle positions—and often fails to recover at the end.</p>
+        </div>
+      </div>
+
+      <div class="stats shell reveal" aria-label="Study at a glance">
+        <div><strong>1,000</strong><span>core questions</span></div>
+        <div><strong>31,000</strong><span>test instances</span></div>
+        <div><strong>6</strong><span>reasoning LLMs</span></div>
+        <div><strong>1,000</strong><span>options at maximum scale</span></div>
+      </div>
+    </section>
+
+    <section class="brief-band" aria-labelledby="brief-title">
+      <div class="brief shell reveal">
+        <div>
+          <div class="section-kicker">In brief</div>
+          <h2 id="brief-title">A structural failure,<br>not just a scaling curve.</h2>
+        </div>
+        <p>Existing multiple-choice evaluations use small option sets and can conflate distinct sources of failure as candidate spaces grow. We decompose large-choice degradation across comparison dependency, cardinality, spatial layout, and gold-answer position. Across six reasoning LLMs, comparative questions and dispersed candidates degrade most sharply, while accuracy often collapses at late-middle and terminal positions instead of recovering in the classic U-shape. A ToolBench replication and a reasoning-trace audit show that the pattern extends beyond the synthetic benchmark and reshapes how models approach selection.</p>
+      </div>
+    </section>
+
+    <section class="section shell" id="idea">
+      <div class="section-kicker reveal">The core question</div>
+      <div class="statement reveal">
+        <h2>Is the model failing to <span>find</span> the answer—or to <span>compare</span> the choices?</h2>
+        <p>Existing multiple-choice evaluations use small option sets and can blur together different sources of failure. We separate them.</p>
+      </div>
+
+      <div class="task-grid">
+        <article class="task-card independent reveal">
+          <div class="task-label">Option-Independent</div>
+          <h3>Retrieve, then locate</h3>
+          <p>The answer can be derived before inspecting the candidates.</p>
+          <blockquote>“What is the capital of Italy?”</blockquote>
+          <div class="mini-flow"><span>knowledge</span><i>→</i><span>answer</span><i>→</i><span>scan</span></div>
+        </article>
+        <article class="task-card dependent reveal">
+          <div class="task-label">Option-Dependent</div>
+          <h3>Compare, then decide</h3>
+          <p>The correct answer emerges only through comparative analysis.</p>
+          <blockquote>“Which algorithm is most efficient?”</blockquote>
+          <div class="mini-flow"><span>inspect</span><i>↔</i><span>compare</span><i>→</i><span>decide</span></div>
+        </article>
+      </div>
+
+      <div class="paradox reveal">
+        <div class="paradox-tag">Reasoning vs. Context Paradox</div>
+        <p>For <strong>four of six models</strong>, 1,000 localized options on an Option-Independent question are less damaging than the native 10-option version of an Option-Dependent question.</p>
+      </div>
+    </section>
+
+    <section class="section benchmark-band" id="benchmark">
+      <div class="shell">
+        <div class="section-heading reveal">
+          <div>
+            <div class="section-kicker">MMLU-1K</div>
+            <h2>A controlled four-axis decomposition</h2>
+          </div>
+          <p>Rather than another single scaling curve, we vary the factors independently to reveal how they interact.</p>
+        </div>
+
+        <div class="axis-grid">
+          <article class="axis-card reveal"><span>01</span><h3>Comparison load</h3><p>Option-Independent vs. Option-Dependent questions.</p></article>
+          <article class="axis-card reveal"><span>02</span><h3>Cardinality</h3><p>Candidate sets with 10, 100, 500, or 1,000 options.</p></article>
+          <article class="axis-card reveal"><span>03</span><h3>Layout</h3><p>Original candidates remain local or are dispersed.</p></article>
+          <article class="axis-card reveal"><span>04</span><h3>Position</h3><p>The gold answer moves across five normalized windows.</p></article>
+        </div>
+
+        <div class="layout-demo reveal">
+          <div class="layout-copy">
+            <div class="section-kicker">Spatial disposition</div>
+            <h3>Same candidates.<br>Different geometry.</h3>
+            <p>The ten original MMLU-Pro options are embedded in a fixed pool of random in-domain distractors.</p>
+            <p class="note"><strong>Why random distractors?</strong> Their deliberately weak, exchangeable distribution holds semantic hardness approximately fixed, isolating structural effects rather than hard-negative composition.</p>
+          </div>
+          <div class="layout-visuals" aria-label="Block and Sparse option layouts">
+            <div class="layout-row">
+              <div class="layout-name"><strong>Block</strong><span>localized signal</span></div>
+              <div class="chips block" aria-hidden="true"></div>
+            </div>
+            <div class="layout-row">
+              <div class="layout-name"><strong>Sparse</strong><span>dispersed signal</span></div>
+              <div class="chips sparse" aria-hidden="true"></div>
+            </div>
+            <div class="chip-legend"><span><i class="original"></i> original option</span><span><i></i> distractor</span><span><i class="target"></i> gold</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section shell" id="results">
+      <div class="section-heading reveal">
+        <div>
+          <div class="section-kicker">Main results</div>
+          <h2>The context can fit the choices.<br>The model still loses them.</h2>
+        </div>
+        <p>Accuracy is shaped jointly by task dependency, scale, spatial layout, and target position.</p>
+      </div>
+
+      <figure class="overview-figure reveal">
+        <button class="zoom-trigger" type="button" aria-label="Enlarge the main results figure">
+          <img src="assets/img/lost-in-choice-overview.png" alt="Accuracy curves across option scales and gold-answer positions for six language models" loading="lazy">
+          <span>Enlarge figure</span>
+        </button>
+        <figcaption>Across models, the most destructive losses emerge around windows 0.75 and 1.0. Dashed horizontal lines denote the native 10-option baseline.</figcaption>
+      </figure>
+
+      <div class="finding-grid">
+        <article class="finding reveal"><span>01</span><h3>Comparison is the bottleneck</h3><p>Option-Dependent questions degrade substantially more than retrieval-driven questions.</p></article>
+        <article class="finding reveal"><span>02</span><h3>Dispersion amplifies failure</h3><p>Sparse placement consistently hurts more than keeping the original candidates together.</p></article>
+        <article class="finding reveal"><span>03</span><h3>No classic U-shape</h3><p>Accuracy generally does not recover when the answer reaches the end of the list.</p></article>
+      </div>
+
+      <div class="model-explorer reveal">
+        <div class="explorer-head">
+          <div>
+            <div class="section-kicker">Explore by model</div>
+            <h3>Six architectures, one structural pattern</h3>
+          </div>
+          <div class="model-tabs" role="tablist" aria-label="Select a model">
+            <button role="tab" aria-selected="true" data-model="gemini-3-flash">Gemini 3 Flash</button>
+            <button role="tab" aria-selected="false" data-model="qwen-27b">Qwen3.5 27B</button>
+            <button role="tab" aria-selected="false" data-model="gemma-4-31b">Gemma 4 31B</button>
+            <button role="tab" aria-selected="false" data-model="qwen-9b">Qwen3.5 9B</button>
+            <button role="tab" aria-selected="false" data-model="gpt-oss-120b">GPT-OSS 120B</button>
+            <button role="tab" aria-selected="false" data-model="gpt-oss-20b">GPT-OSS 20B</button>
+          </div>
+        </div>
+        <div class="model-panel" role="tabpanel">
+          <button class="zoom-trigger model-zoom" type="button" aria-label="Enlarge detailed results for Gemini 3 Flash">
+            <img id="model-figure" src="assets/img/gemini-3-flash.png" alt="Detailed Lost-in-Choice results for Gemini 3 Flash" loading="lazy">
+            <span>Enlarge figure</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section toolbench-band" id="toolbench">
+      <div class="shell">
+        <div class="toolbench-grid">
+          <div class="toolbench-copy reveal">
+            <div class="section-kicker">Real-trajectory replication</div>
+            <h2>The same collapse appears in ToolBench.</h2>
+            <p>We repeat the positional test on real solved tool-use trajectories, retaining ten task-relevant tools and defining the first recorded tool call as the target.</p>
+            <div class="replication-meta"><span><strong>500</strong> trajectories per cell</span><span><strong>2</strong> models</span><span><strong>1,000</strong> expanded candidates</span></div>
+            <p class="caveat">Both models reach their minimum at window 0.75, matching MMLU-1K’s hardest position. The controlled expansion tests transfer of the structural effect, not its prevalence in deployed systems.</p>
+          </div>
+
+          <div class="toolbench-chart reveal" aria-label="ToolBench accuracy by target window">
+            <div class="chart-legend"><span class="qwen">Qwen3.5-9B</span><span class="gemma">Gemma-4-31B</span></div>
+            <div class="chart-scale"><span>50%</span><span>60%</span><span>70%</span><span>80%</span></div>
+            <div class="bar-group"><div class="bar-label">10-opt</div><div class="bar qwen" style="--width:82.7%"><span>74.8</span></div><div class="bar gemma" style="--width:86.3%"><span>75.9</span></div></div>
+            <div class="bar-group"><div class="bar-label">w = .25</div><div class="bar qwen" style="--width:74%"><span>72.2</span></div><div class="bar gemma" style="--width:79.3%"><span>73.8</span></div></div>
+            <div class="bar-group"><div class="bar-label">w = .50</div><div class="bar qwen" style="--width:30%"><span>59.0</span></div><div class="bar gemma" style="--width:68%"><span>70.4</span></div></div>
+            <div class="bar-group hardest"><div class="bar-label">w = .75 <b>hardest</b></div><div class="bar qwen" style="--width:22.7%"><span>56.8</span></div><div class="bar gemma" style="--width:54.3%"><span>66.3</span></div></div>
+            <div class="bar-group"><div class="bar-label">w = 1.0</div><div class="bar qwen" style="--width:31.3%"><span>59.4</span></div><div class="bar gemma" style="--width:67%"><span>70.1</span></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section shell" id="behavior">
+      <div class="section-heading reveal">
+        <div>
+          <div class="section-kicker">Beyond accuracy</div>
+          <h2>How reasoning changes<br>as choice expands</h2>
+        </div>
+        <p>An audit of generated traces reveals recurring strategies—and a sharp difference between retrieval and comparison.</p>
+      </div>
+
+      <div class="strategy-grid">
+        <article class="strategy reveal"><span>S1</span><h3>Independent derivation then scan</h3><p>Solve first, then search the list for the internally derived answer.</p></article>
+        <article class="strategy reveal"><span>S2</span><h3>Sequential review</h3><p>Evaluate candidates linearly, one option at a time.</p></article>
+        <article class="strategy reveal"><span>S3</span><h3>Eliminative filtering</h3><p>Discard implausible candidates to reduce the active set.</p></article>
+        <article class="strategy reveal"><span>S4</span><h3>Candidate-led shortlisting</h3><p>Match hypotheses against promising items in the list.</p></article>
+      </div>
+
+      <div class="takeaway reveal">
+        <span>The operational takeaway</span>
+        <p>Report performance by target rank, preserve locality among mutually relevant candidates, and do not assume that robust lookup implies robust comparison.</p>
+      </div>
+    </section>
+
+    <section class="section citation-band" id="citation">
+      <div class="shell citation-grid">
+        <div class="reveal">
+          <div class="section-kicker">Citation</div>
+          <h2>If this work helps your research, please cite it.</h2>
+          <p>Copy the camera-ready BibTeX entry below; page numbers can be added once the proceedings metadata is final.</p>
+        </div>
+        <div class="bibtex reveal">
+          <button class="copy-button" type="button" aria-label="Copy BibTeX">Copy</button>
+          <pre><code id="bibtex-code">@inproceedings{DBLP:conf/emnlp/CocchieriRTM26,
+  author       = {Alessio Cocchieri and
+                  Luca Ragazzi and
+                  Giuseppe Tagliavini and
+                  Gianluca Moro},
+  title        = {Lost in Choice: Evaluating LLMs Under Extreme Multiple-Choice Scaling},
+  booktitle    = {Findings of the Association for Computational Linguistics: {EMNLP}
+                  2026, Budapest, Hungary, October 24-29, 2026},
+  publisher    = {Association for Computational Linguistics},
+  year         = {2026},
+}</code></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="lightbox" id="figure-lightbox" aria-labelledby="lightbox-caption">
+    <button class="lightbox-close" type="button" aria-label="Close enlarged figure">×</button>
+    <div class="lightbox-content">
+      <img id="lightbox-image" src="" alt="">
+      <p id="lightbox-caption"></p>
+    </div>
+  </dialog>
+
+  <footer>
+    <div class="shell footer-inner">
+      <div><strong>Lost in Choice</strong><span>University of Bologna · EMNLP 2026</span></div>
+      <a href="https://disi-unibo-nlp.github.io" target="_blank" rel="noreferrer">DISI NLP Research Group ↗</a>
+    </div>
+  </footer>
+</body>
+</html>
