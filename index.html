@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Lost in Choice: a controlled study of LLMs under extreme multiple-choice scaling.">
-  <meta name="keywords" content="LLM evaluation, multiple choice, long context, positional bias, MMLU-1K, ToolBench">
+  <meta name="keywords" content="LLM evaluation, multiple choice, long context, positional bias, MMLU-XT, ToolBench">
   <meta name="theme-color" content="#081a24">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Lost in Choice — Evaluating LLMs Under Extreme Multiple-Choice Scaling">
@@ -62,7 +62,7 @@
             <a class="button secondary" href="https://github.com/disi-unibo-nlp/lost-in-choice" target="_blank" rel="noreferrer">View code <span aria-hidden="true">↗</span></a>
             <a class="button secondary" href="#citation">BibTeX <span aria-hidden="true">↓</span></a>
           </div>
-          <p class="availability"><span aria-hidden="true">✓</span> Code and analysis notebooks are public; MMLU-1K will be released with the paper.</p>
+          <p class="availability"><span aria-hidden="true">✓</span> Code and analysis notebooks are public; MMLU-XT will be released with the paper.</p>
         </div>
 
         <div class="choice-stage reveal" aria-label="Animated representation of a large candidate list">
@@ -140,7 +140,7 @@
       <div class="shell">
         <div class="section-heading reveal">
           <div>
-            <div class="section-kicker">MMLU-1K</div>
+            <div class="section-kicker">MMLU-XT</div>
             <h2>A controlled four-axis decomposition</h2>
           </div>
           <p>Rather than another single scaling curve, we vary the factors independently to reveal how they interact.</p>
@@ -230,7 +230,7 @@
             <h2>The same collapse appears in ToolBench.</h2>
             <p>We repeat the positional test on real solved tool-use trajectories, retaining ten task-relevant tools and defining the first recorded tool call as the target.</p>
             <div class="replication-meta"><span><strong>500</strong> trajectories per cell</span><span><strong>2</strong> models</span><span><strong>1,000</strong> expanded candidates</span></div>
-            <p class="caveat">Both models reach their minimum at window 0.75, matching MMLU-1K’s hardest position. The controlled expansion tests transfer of the structural effect, not its prevalence in deployed systems.</p>
+            <p class="caveat">Both models reach their minimum at window 0.75, matching MMLU-XT’s hardest position. The controlled expansion tests transfer of the structural effect, not its prevalence in deployed systems.</p>
           </div>
 
           <div class="toolbench-chart reveal" aria-label="ToolBench accuracy by target window">
