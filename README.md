@@ -20,7 +20,9 @@ Standard multiple-choice benchmarks (MMLU-Pro: 10 options) make it hard to disen
 We find a systematic, layout-driven degradation of global comparative reasoning: models that perform near ceiling on 10 options can collapse to near-random at 1,000 — a failure mode we define as the *Lost-in-Choice* phenomenon.
 
 
-## Benchmark: MMLU-1K
+## Benchmark: MMLU-XT
+
+🤗 Public dataset: [disi-unibo-nlp/MMLU-XT](https://huggingface.co/datasets/disi-unibo-nlp/MMLU-XT)
 
 A diagnostic benchmark of **1,000 questions** from MMLU-Pro (CS, Health, Law, Math — 250 each), expanded to **31,000 unique test instances** by varying three independent axes:
 
@@ -120,7 +122,7 @@ HF_TOKEN=...          # needed only for push_to_hf.py
 
 The full pipeline runs in three phases. See [`preprocess/README.md`](preprocess/README.md) for detailed instructions, all script arguments, and intermediate output formats.
 
-### Phase 1 — Build MMLU-1K (`preprocess/`)
+### Phase 1 — Build MMLU-XT (`preprocess/`)
 
 | Step | Script                        | Output                                                                   |
 | ---- | ----------------------------- | ------------------------------------------------------------------------ |
